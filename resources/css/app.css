@@ -1,0 +1,333 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body,
+html {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+@layer base {
+    :root {
+        /* Light — acento verde WhatsApp (resto neutro claro) */
+        --background: 210 25% 98%;
+        --foreground: 222 47% 11%;
+        --card: 0 0% 100%;
+        --card-foreground: 222 47% 11%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 222 47% 11%;
+        --primary: 142 70% 40%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 210 20% 94%;
+        --secondary-foreground: 222 47% 11%;
+        --muted: 210 18% 95%;
+        --muted-foreground: 215 16% 42%;
+        --accent: 142 45% 94%;
+        --accent-foreground: 142 75% 26%;
+        --destructive: 0 72% 51%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 214 20% 90%;
+        --input: 214 20% 88%;
+        --ring: 142 70% 40%;
+        --chart-1: 142 70% 40%;
+        --chart-2: 173 58% 39%;
+        --chart-3: 215 28% 35%;
+        --chart-4: 43 74% 66%;
+        --chart-5: 27 87% 67%;
+        --radius: 0.625rem;
+        --sidebar-background: 0 0% 100%;
+        --sidebar-foreground: 222 47% 11%;
+        --sidebar-primary: 142 70% 40%;
+        --sidebar-primary-foreground: 0 0% 100%;
+        --sidebar-accent: 142 45% 94%;
+        --sidebar-accent-foreground: 142 75% 26%;
+        --sidebar-border: 214 20% 92%;
+        --sidebar-ring: 142 70% 40%;
+    }
+
+    .dark {
+        /* Dark global — paleta WhatsApp: negro/azul petróleo + verde */
+        --background: 200 25% 7%;
+        --foreground: 210 17% 93%;
+        --card: 200 20% 10%;
+        --card-foreground: 210 17% 93%;
+        --popover: 200 20% 10%;
+        --popover-foreground: 210 17% 93%;
+        --primary: 164 86% 33%;
+        --primary-foreground: 210 20% 98%;
+        --secondary: 200 15% 14%;
+        --secondary-foreground: 210 17% 93%;
+        --muted: 200 15% 12%;
+        --muted-foreground: 200 10% 62%;
+        --accent: 164 45% 16%;
+        --accent-foreground: 164 70% 48%;
+        --destructive: 0 62% 50%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 200 14% 22%;
+        --input: 200 14% 22%;
+        --ring: 164 86% 33%;
+        --chart-1: 164 86% 33%;
+        --chart-2: 142 55% 45%;
+        --chart-3: 200 14% 40%;
+        --chart-4: 43 74% 55%;
+        --chart-5: 27 70% 50%;
+        --sidebar-background: 200 25% 7%;
+        --sidebar-foreground: 210 17% 93%;
+        --sidebar-primary: 164 86% 33%;
+        --sidebar-primary-foreground: 210 20% 98%;
+        --sidebar-accent: 164 45% 16%;
+        --sidebar-accent-foreground: 164 70% 52%;
+        --sidebar-border: 200 14% 22%;
+        --sidebar-ring: 164 86% 33%;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+
+    body {
+        @apply bg-background text-foreground antialiased;
+    }
+}
+
+@layer components {
+    .crm-page {
+        @apply flex flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8;
+    }
+
+    /* Solo página /chat: altura fija al viewport; scroll interno en paneles */
+    .crm-page--chat {
+        @apply flex flex-none flex-col overflow-hidden px-4 py-3 sm:px-6 sm:py-4;
+        height: calc(100svh - 4rem);
+        max-height: calc(100svh - 4rem);
+    }
+
+    .crm-chat-top {
+        @apply shrink-0 space-y-5 pb-6;
+    }
+
+    .crm-chat-body {
+        @apply flex min-h-0 flex-1 flex-col gap-5 overflow-hidden;
+    }
+
+    .crm-chat-filters {
+        @apply shrink-0;
+    }
+
+    .crm-chat-workspace {
+        @apply grid min-h-0 flex-1 grid-cols-1 gap-5 overflow-hidden lg:grid-cols-12 lg:items-stretch;
+    }
+
+    .crm-chat-panel {
+        @apply flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm;
+    }
+
+    .crm-chat-panel-header {
+        @apply flex shrink-0 items-center justify-between border-b px-4 py-3.5;
+        min-height: 3.75rem;
+        background-color: hsl(var(--wa-panel-header));
+        border-color: hsl(var(--wa-border));
+    }
+
+    /* WhatsApp — solo página /chat (light: verde en vez de borgoña; dark: negro + verde) */
+    .crm-page--chat {
+        --wa-accent: 142 70% 42%;
+        --wa-accent-fg: 0 0% 100%;
+        --wa-bubble-in: 0 0% 100%;
+        --wa-bubble-in-fg: 222 47% 11%;
+        --wa-bubble-out: 111 58% 88%;
+        --wa-bubble-out-fg: 168 75% 16%;
+        --wa-surface: 38 28% 91%;
+        --wa-panel: 0 0% 100%;
+        --wa-panel-header: 210 20% 97%;
+        --wa-border: 214 20% 90%;
+        --wa-muted-fg: 215 16% 42%;
+    }
+
+    .dark .crm-page--chat {
+        --wa-accent: var(--primary);
+        --wa-accent-fg: var(--primary-foreground);
+        --wa-bubble-in: 200 15% 18%;
+        --wa-bubble-in-fg: var(--foreground);
+        --wa-bubble-out: 168 100% 18%;
+        --wa-bubble-out-fg: 200 9% 93%;
+        --wa-surface: var(--background);
+        --wa-panel: var(--card);
+        --wa-panel-header: var(--secondary);
+        --wa-border: var(--border);
+        --wa-muted-fg: var(--muted-foreground);
+    }
+
+    .crm-page--chat .crm-chat-panel {
+        background-color: hsl(var(--wa-panel));
+        border-color: hsl(var(--wa-border));
+    }
+
+    .crm-page--chat .crm-chat-filters {
+        background-color: hsl(var(--wa-panel-header));
+        border-color: hsl(var(--wa-border));
+    }
+
+    .crm-page--chat .crm-chat-messages {
+        background-color: hsl(var(--wa-surface));
+    }
+
+    .crm-page--chat .crm-chat-input-bar {
+        background-color: hsl(var(--wa-panel-header));
+        border-color: hsl(var(--wa-border));
+    }
+
+    .crm-page--chat .chat-bubble-in {
+        @apply rounded-2xl rounded-bl-sm border shadow-sm;
+        background-color: hsl(var(--wa-bubble-in));
+        color: hsl(var(--wa-bubble-in-fg));
+        border-color: hsl(var(--wa-border) / 0.65);
+    }
+
+    .crm-page--chat .chat-bubble-out {
+        @apply rounded-2xl rounded-br-sm border shadow-sm;
+        background-color: hsl(var(--wa-bubble-out));
+        color: hsl(var(--wa-bubble-out-fg));
+        border-color: hsl(var(--wa-bubble-out) / 0.5);
+    }
+
+    .crm-page--chat .chat-bubble-out .chat-bubble-meta {
+        color: hsl(var(--wa-bubble-out-fg) / 0.72);
+    }
+
+    .crm-page--chat .chat-accent-text {
+        color: hsl(var(--wa-accent));
+    }
+
+    .crm-page--chat .chat-accent-bg {
+        background-color: hsl(var(--wa-accent));
+        color: hsl(var(--wa-accent-fg));
+    }
+
+    .crm-page--chat .chat-accent-bg:hover {
+        background-color: hsl(var(--wa-accent) / 0.9);
+    }
+
+    .crm-page--chat .chat-accent-border {
+        border-color: hsl(var(--wa-accent));
+    }
+
+    .crm-page--chat .chat-accent-ring {
+        --tw-ring-color: hsl(var(--wa-accent));
+    }
+
+    .crm-page--chat .chat-selected-conv {
+        border-left-color: hsl(var(--wa-accent));
+        background-color: hsl(var(--wa-accent) / 0.08);
+    }
+
+    .dark .crm-page--chat .chat-selected-conv {
+        background-color: hsl(var(--wa-accent) / 0.14);
+    }
+
+    .crm-page--chat .chat-badge-bot {
+        border-color: hsl(var(--wa-accent) / 0.35);
+        background-color: hsl(var(--wa-accent) / 0.12);
+        color: hsl(var(--wa-accent));
+    }
+
+    .crm-page--chat .chat-filter-active {
+        color: hsl(var(--wa-accent));
+    }
+
+    .crm-page--chat .chat-btn-mode-active {
+        border-color: hsl(var(--wa-accent));
+        background-color: hsl(var(--wa-accent));
+        color: hsl(var(--wa-accent-fg));
+    }
+
+    .crm-page--chat .chat-input,
+    .crm-page--chat .chat-field {
+        @apply focus:outline-none focus:ring-2;
+        --tw-ring-color: hsl(var(--wa-accent) / 0.45);
+        border-color: hsl(var(--wa-border));
+    }
+
+    .crm-page--chat .chat-field {
+        @apply focus:ring-1;
+    }
+
+    .dark .crm-page--chat .chat-input,
+    .dark .crm-page--chat .chat-field {
+        background-color: hsl(var(--wa-panel-header));
+        color: hsl(var(--wa-bubble-in-fg));
+        border-color: hsl(var(--wa-border));
+    }
+
+    .dark .crm-page--chat .chat-conv-list {
+        @apply divide-[hsl(var(--wa-border))];
+    }
+
+    .dark .crm-page--chat .chat-mode-bar {
+        border-color: hsl(var(--wa-border));
+        background-color: hsl(var(--wa-panel-header));
+    }
+
+    .crm-page--chat .chat-profile-card {
+        border-color: hsl(var(--wa-accent) / 0.35);
+        background-color: hsl(var(--wa-accent) / 0.08);
+    }
+
+    .dark .crm-page--chat .chat-profile-card {
+        background-color: hsl(var(--wa-accent) / 0.12);
+    }
+
+    .crm-page--chat .chat-profile-card-title {
+        color: hsl(var(--wa-accent));
+    }
+
+    .dark .crm-page--chat .chat-profile-card-title {
+        color: hsl(164 70% 48%);
+    }
+
+    .crm-page--chat .chat-tag {
+        border-color: hsl(var(--wa-accent) / 0.3);
+        background-color: hsl(var(--wa-accent) / 0.1);
+        color: hsl(var(--wa-accent));
+    }
+
+    .dark .crm-page--chat .chat-tag {
+        color: hsl(164 70% 55%);
+    }
+
+    .dark .crm-page--chat {
+        background-color: hsl(var(--wa-surface));
+    }
+
+    .crm-page--chat .chat-bubble-out .chat-bubble-error {
+        color: hsl(0 90% 88%);
+    }
+
+    .crm-page-bg {
+        @apply min-h-[calc(100vh-4rem)] bg-background;
+        background-image: radial-gradient(ellipse 80% 50% at 50% -20%, hsl(var(--primary) / 0.06), transparent);
+    }
+
+    .crm-table {
+        @apply min-w-full divide-y divide-border text-sm;
+    }
+
+    .crm-table thead {
+        @apply bg-muted/40;
+    }
+
+    .crm-table th {
+        @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground;
+    }
+
+    .crm-table td {
+        @apply whitespace-nowrap px-4 py-3.5 text-foreground;
+    }
+
+    .crm-table tbody tr {
+        @apply transition-colors hover:bg-muted/30;
+    }
+}
