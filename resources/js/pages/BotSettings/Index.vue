@@ -170,6 +170,11 @@ const showAdvanced = ref(false);
                             <Label for="groq-key">API Key Groq</Label>
                             <Input id="groq-key" v-model="settings.groq_api_key" type="password" placeholder="gsk_..." />
                         </div>
+                        <div class="space-y-2">
+                            <Label for="hf-key">API Key Hugging Face</Label>
+                            <Input id="hf-key" v-model="settings.huggingface_token" type="password" placeholder="hf_..." />
+                            <p class="text-xs text-muted-foreground">Opcional. Para reconocimiento visual de catálogo (CLIP).</p>
+                        </div>
                         <div class="grid gap-4 sm:grid-cols-2">
                             <div class="space-y-2">
                                 <Label for="model-chat">Modelo chat</Label>

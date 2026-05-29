@@ -101,13 +101,39 @@ class ProductController extends Controller
         ]);
 
         if (isset($validated['variants'])) {
-            $product->variants()->delete();
-            foreach ($validated['variants'] as $variant) {
-                $product->variants()->create([
-                    'color' => $variant['color'],
-                    'image_url' => $variant['image_url'] ?? null,
-                    'sizes_stock' => $variant['sizes_stock'],
-                ]);
+            $keptIds = [];
+
+            foreach ($validated['variants'] as $variantData) {
+                $payload = [
+                    'color' => $variantData['color'],
+                    'image_url' => $variantData['image_url'] ?? null,
+                    'sizes_stock' => $variantData['sizes_stock'],
+                ];
+
+                if (! empty($variantData['id'])) {
+                    $existing = $product->variants()->find($variantData['id']);
+                    if ($existing) {
+                        // No sobrescribir image_path (foto subida por archivo)
+                        if ($existing->image_path) {
+                            unset($payload['image_url']);
+                        }
+                        $existing->update($payload);
+                        $keptIds[] = $existing->id;
+
+                        continue;
+                    }
+                }
+
+                $created = $product->variants()->create($payload);
+                $keptIds[] = $created->id;
+            }
+
+            $removed = $product->variants()->whereNotIn('id', $keptIds)->get();
+            foreach ($removed as $variant) {
+                if ($variant->image_path) {
+                    \Illuminate\Support\Facades\Storage::disk('public')->delete($variant->image_path);
+                }
+                $variant->delete();
             }
         }
 

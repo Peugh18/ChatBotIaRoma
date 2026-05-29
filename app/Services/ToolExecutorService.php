@@ -189,11 +189,19 @@ class ToolExecutorService
         $state->context = $context;
         $state->save();
 
+        $normalizedColor = mb_strtolower(trim($color));
+
         $variant = ProductVariant::where('product_id', $productId)
-            ->where('color', 'like', "%{$color}%")
+            ->whereRaw('LOWER(TRIM(color)) = ?', [$normalizedColor])
             ->first();
 
-        if (!$variant) {
+        if (! $variant) {
+            $variant = ProductVariant::where('product_id', $productId)
+                ->whereRaw('LOWER(TRIM(color)) LIKE ?', ["%{$normalizedColor}%"])
+                ->first();
+        }
+
+        if (! $variant) {
             return [
                 'product' => $product->name,
                 'color' => $color,
@@ -202,11 +210,15 @@ class ToolExecutorService
             ];
         }
 
+        $context['current_color'] = $variant->color;
+        $state->context = $context;
+        $state->save();
+
         return [
             'product' => $product->name,
             'color' => $variant->color,
             'available' => true,
-            'stock_by_size' => $variant->sizes_stock,
+            'stock_by_size' => \App\Support\SizeStockNormalizer::normalize($variant->sizes_stock ?? []),
         ];
     }
 
@@ -241,7 +253,7 @@ class ToolExecutorService
     /**
      * Envía la imagen de un vestido por WhatsApp guardándola como pendiente en el contexto.
      */
-    public function executeSendProductImage(ConversationState $state, int $productId, ?string $color = null): array
+    public function executeSendProductImage(ConversationState $state, int $productId, ?string $color = null, ?string $caption = null): array
     {
         Log::info('ToolExecutorService: executeSendProductImage', ['product_id' => $productId, 'color' => $color]);
 
@@ -254,39 +266,64 @@ class ToolExecutorService
         $variant = null;
 
         if ($color) {
+            $normalizedColor = mb_strtolower(trim($color));
+
             $variant = ProductVariant::where('product_id', $productId)
-                ->where('color', 'like', "%{$color}%")
+                ->whereRaw('LOWER(color) = ?', [$normalizedColor])
                 ->first();
-            $imageUrl = $this->media->resolvePublicUrl($variant);
+
+            if (! $variant) {
+                $variant = ProductVariant::where('product_id', $productId)
+                    ->whereRaw('LOWER(color) LIKE ?', ["%{$normalizedColor}%"])
+                    ->first();
+            }
+
+            if ($variant) {
+                $imageUrl = $this->media->resolvePublicUrl($variant);
+
+                if (! $imageUrl) {
+                    return [
+                        'success' => false,
+                        'error' => "El color '{$variant->color}' no tiene foto cargada.",
+                        'color' => $variant->color,
+                    ];
+                }
+            }
         }
 
-        if (!$imageUrl) {
+        if (! $imageUrl && (! $color || ! $variant)) {
             foreach ($product->variants as $v) {
                 $imageUrl = $this->media->resolvePublicUrl($v);
                 if ($imageUrl) {
+                    $variant = $v;
                     break;
                 }
             }
         }
 
-        if (!$imageUrl && $product->images->isNotEmpty()) {
+        if (! $imageUrl && (! $color || ! $variant) && $product->images->isNotEmpty()) {
             $imageUrl = $product->images->first()->image_url;
         }
 
-        if (!$imageUrl) {
+        if (! $imageUrl) {
             return [
                 'success' => false,
                 'error' => 'No se encontró una imagen cargada para este vestido.',
             ];
         }
 
-        // Registrar imagen pendiente en el contexto conversacional
+        $resolvedCaption = $caption
+            ?? ($color
+                ? 'Color '.($variant?->color ?? $color).' 📸'
+                : "✨ {$product->name} 📸");
+
         $context = $state->context;
         $context['pending_image_url'] = $imageUrl;
+        $context['pending_image_caption'] = $resolvedCaption;
         $context['current_product_id'] = $productId;
         $context['current_product_name'] = $product->name;
         if ($color) {
-            $context['current_color'] = $color;
+            $context['current_color'] = $variant?->color ?? $color;
         }
         $state->context = $context;
         $state->save();
@@ -294,6 +331,7 @@ class ToolExecutorService
         return [
             'success' => true,
             'image_url' => $imageUrl,
+            'caption' => $resolvedCaption,
             'message' => "La imagen de {$product->name} ha sido encolada para ser enviada adjunta al mensaje final de texto.",
         ];
     }
@@ -355,6 +393,62 @@ class ToolExecutorService
         try {
             if (empty($items)) {
                 return ['success' => false, 'error' => 'No hay ítems en la orden.'];
+            }
+
+            // Validar stock de cada item antes de crear el pedido
+            foreach ($items as $item) {
+                $productId = $item['product_id'] ?? null;
+                $color = $item['color'] ?? null;
+                $size = $item['size'] ?? null;
+                $qty = (int) ($item['qty'] ?? 1);
+
+                if (!$productId || !$color || !$size) {
+                    return ['success' => false, 'error' => 'Cada item debe tener product_id, color y size.'];
+                }
+
+                // Validar que color y talla existan en la variante
+                $variant = ProductVariant::where('product_id', $productId)
+                    ->where('color', 'like', "%{$color}%")
+                    ->first();
+
+                if (!$variant) {
+                    Log::warning('ToolExecutorService: Color no disponible', [
+                        'product_id' => $productId,
+                        'color' => $color,
+                    ]);
+                    return [
+                        'success' => false,
+                        'error' => "Color '{$color}' no disponible para este producto.",
+                    ];
+                }
+
+                if (!isset($variant->sizes_stock[$size])) {
+                    Log::warning('ToolExecutorService: Talla no disponible', [
+                        'product_id' => $productId,
+                        'color' => $color,
+                        'size' => $size,
+                    ]);
+                    return [
+                        'success' => false,
+                        'error' => "Talla '{$size}' no disponible en color '{$color}'.",
+                    ];
+                }
+
+                $stockValidation = PriceValidatorService::validateStock($productId, $color, $size, $qty);
+                if (!$stockValidation['available']) {
+                    Log::warning('ToolExecutorService: Stock insuficiente', [
+                        'product_id' => $productId,
+                        'color' => $color,
+                        'size' => $size,
+                        'requested' => $qty,
+                        'available' => $stockValidation['stock'],
+                    ]);
+                    return [
+                        'success' => false,
+                        'error' => $stockValidation['error'],
+                        'stock_available' => $stockValidation['stock'],
+                    ];
+                }
             }
 
             // Validar precios e integridad usando PriceValidatorService

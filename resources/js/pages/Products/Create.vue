@@ -130,20 +130,46 @@ const submit = async () => {
             throw new Error(err.message || 'Error al crear producto');
         }
         const created = await response.json();
+        console.log('Producto creado:', created);
+        
+        const photoErrors: string[] = [];
         for (let i = 0; i < form.value.variants.length; i++) {
             const pending = form.value.variants[i].pendingFile;
             const createdVariant = created.variants?.[i];
             if (pending && createdVariant?.id) {
+                console.log('Subiendo foto para variant ID:', createdVariant.id, 'Archivo:', pending.name);
+                
                 const body = new FormData();
                 body.append('photo', pending);
-                await fetch(`/api/product-variants/${createdVariant.id}/photo`, {
+                
+                const photoResponse = await fetch(`/api/product-variants/${createdVariant.id}/photo`, {
                     method: 'POST',
                     headers: { 'X-CSRF-TOKEN': getCsrfToken(), 'Accept': 'application/json' },
                     credentials: 'same-origin',
                     body,
                 });
+                
+                console.log('Photo response status:', photoResponse.status);
+                
+                if (!photoResponse.ok) {
+                    let message = `HTTP ${photoResponse.status}`;
+                    try {
+                        const err = await photoResponse.json();
+                        message = err.message || err.errors?.photo?.[0] || message;
+                    } catch {
+                        message = (await photoResponse.text()) || message;
+                    }
+                    photoErrors.push(`${form.value.variants[i].color}: ${message}`);
+                }
             }
         }
+
+        if (photoErrors.length > 0) {
+            alert(`Producto creado, pero falló la subida de fotos:\n\n${photoErrors.join('\n')}`);
+            router.visit(`/products/${created.id}/edit`);
+            return;
+        }
+
         router.visit('/products');
     } catch (error: any) {
         console.error('Error creating product:', error);

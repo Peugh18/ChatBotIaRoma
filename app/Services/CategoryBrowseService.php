@@ -462,16 +462,6 @@ class CategoryBrowseService
             );
         }
 
-        $first = $products->first();
-        if ($first) {
-            $first->loadMissing('variants');
-            $variant = $first->variants->first();
-            $previewUrl = $variant ? $this->media->resolvePublicUrl($variant) : null;
-            if ($previewUrl && $this->media->isUrlReachableByMeta($previewUrl)) {
-                $this->tools->executeSendProductImage($state, $first->id, null);
-            }
-        }
-
         return ['text' => $this->business->applyBrandCta($text), 'metadata' => []];
     }
 

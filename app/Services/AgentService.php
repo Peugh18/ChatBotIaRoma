@@ -28,21 +28,45 @@ class AgentService
         $reminders = [];
         $settings = $this->llmService->getSettings();
 
+        // Respetar BotSetting.auto_reply_enabled
+        if (!$settings->auto_reply_enabled) {
+            return $reminders;
+        }
+
         $states = ConversationState::where('requires_human', false)
             ->where('last_activity_at', '>', now()->subHours(1))
             ->get();
 
+        // Etapas donde el cliente puede quedarse colgado y necesita reminder
+        $eligibleStages = [
+            'awaiting_color_selection',
+            'awaiting_size_selection',
+            'awaiting_order_confirmation',
+            'awaiting_shipping_method',
+            'awaiting_district',
+            'awaiting_shalom_region',
+            'awaiting_order_summary',
+            'awaiting_payment_method',
+            'awaiting_payment_proof',
+            'awaiting_shipping_data',
+            'awaiting_card_full_name',
+            'awaiting_card_email',
+            'awaiting_card_phone',
+        ];
+
         foreach ($states as $state) {
             $stage = $state->context['sales_stage'] ?? null;
-            if (!in_array($stage, [
-                'awaiting_order_confirmation',
-                'awaiting_payment_method',
-                'awaiting_payment_proof',
-            ], true)) {
+            
+            // No enviar reminder si está en awaiting_payment_validation (requiere validación humana)
+            if ($stage === 'awaiting_payment_validation') {
                 continue;
             }
 
-            $elapsed = now()->diffInSeconds($state->last_activity_at);
+            if (!in_array($stage, $eligibleStages, true)) {
+                continue;
+            }
+
+            $elapsed = $state->last_activity_at->diffInSeconds(now());
 
             if ($elapsed >= $settings->reminder_3min_seconds && $state->last_reminder_sent === 'none') {
                 SendReminderJob::dispatch($state->phone_number, $settings->reminder_3min_message);
