@@ -54,14 +54,8 @@ class IntentTranslatorService
         if (preg_match('/^pick_style_([a-z0-9_]+)$/', $buttonId, $matches)) {
             return 'pick_style_' . $matches[1];
         }
-        if ($buttonId === 'size_s') {
-            return 'Quiero talla S';
-        }
-        if ($buttonId === 'size_m') {
-            return 'Quiero talla M';
-        }
-        if ($buttonId === 'size_l') {
-            return 'Quiero talla L';
+        if (preg_match('/^size_([a-z0-9]+)$/i', $buttonId, $matches)) {
+            return 'Quiero talla ' . strtoupper($matches[1]);
         }
 
         // Mapeos con expresiones regulares para botones dinámicos

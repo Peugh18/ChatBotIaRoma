@@ -13,23 +13,19 @@ class ProductVariant extends Model
         'image_path',
         'image_url',
         'sizes_stock',
-    ];
-
-    protected $appends = [
-        'public_image_url',
+        'embedding',
+        'embedding_indexed_at',
+        'embedding_model',
     ];
 
     protected $casts = [
         'sizes_stock' => 'array',
+        'embedding' => 'array',
+        'embedding_indexed_at' => 'datetime',
     ];
 
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
-    }
-
-    public function getPublicImageUrlAttribute(): ?string
-    {
-        return app(\App\Services\ProductMediaService::class)->resolvePublicUrl($this);
     }
 }

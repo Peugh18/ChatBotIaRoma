@@ -16,7 +16,8 @@ class SalesFlowService
 {
     public function __construct(
         protected ToolExecutorService $tools,
-        protected BusinessConfigService $business
+        protected BusinessConfigService $business,
+        protected CustomerDataSyncService $customerSync
     ) {}
 
     public function handleStage(ConversationState $state, string $message, bool $hasImage = false, ?string $imageUrl = null): ?array
@@ -274,6 +275,11 @@ class SalesFlowService
         $state->context = $ctx;
         $state->save();
 
+        // Sincronizar datos del cliente después de guardar card_full_name o card_email
+        if ($field === 'card_full_name' || $field === 'card_email') {
+            $this->customerSync->syncFromConversationContext($state);
+        }
+
         $prompt = match ($nextStage) {
             'awaiting_card_email' => '¿Tu correo electrónico?',
             'awaiting_card_phone' => '¿Tu número de celular?',
@@ -283,7 +289,7 @@ class SalesFlowService
         return ['text' => $this->business->applyBrandCta($prompt), 'metadata' => []];
     }
 
-    protected function handleCardPhone(ConversationState $state, string $message): ?array
+    public function handleCardPhone(ConversationState $state, string $message): ?array
     {
         if (! preg_match('/\d{7,}/', $message)) {
             return ['text' => $this->business->applyBrandCta('Indícame un celular válido (9 dígitos) 💕'), 'metadata' => []];
@@ -293,10 +299,14 @@ class SalesFlowService
         $ctx['card_phone'] = trim($message);
         $ctx['sales_stage'] = 'awaiting_shipping_data';
         $ctx['shipping_data_step'] = 0;
+        $ctx['card_flow'] = true; // Marcar que es flujo tarjeta para escalar después
         $state->context = $ctx;
         $state->save();
 
-        $this->tools->executeEscalateToHuman($state, 'Cliente solicitó link de pago con tarjeta');
+        // Sincronizar datos del cliente después de guardar card_phone
+        $this->customerSync->syncFromConversationContext($state);
+
+        // NO escalar a humano aquí - esperar a completar datos de envío (opción A)
 
         return [
             'text' => $this->business->applyBrandCta(
@@ -415,7 +425,7 @@ class SalesFlowService
         ];
     }
 
-    protected function handleShippingDataCollection(ConversationState $state, string $message, ?string $stage): ?array
+    public function handleShippingDataCollection(ConversationState $state, string $message, ?string $stage): ?array
     {
         if ($stage !== 'awaiting_shipping_data') {
             return null;
@@ -426,6 +436,23 @@ class SalesFlowService
         $fields = $method === 'shalom'
           ? ['ship_full_name', 'ship_dni', 'ship_phone', 'ship_shalom_branch']
           : ['ship_full_name', 'ship_phone', 'ship_address', 'ship_location'];
+
+        // Pre-rellenar ship_full_name y ship_phone si ya existen en card data
+        if (empty($ctx['ship_full_name']) && !empty($ctx['card_full_name'])) {
+            $ctx['ship_full_name'] = $ctx['card_full_name'];
+        }
+        if (empty($ctx['ship_phone']) && !empty($ctx['card_phone'])) {
+            $ctx['ship_phone'] = $ctx['card_phone'];
+        }
+
+        // Si ya tenemos todos los datos necesarios, saltar directamente a finalizar
+        if ($method === 'motorizado' && !empty($ctx['ship_full_name']) && !empty($ctx['ship_phone'])) {
+            // Solo necesitamos dirección y ubicación
+            $fields = ['ship_address', 'ship_location'];
+        } elseif ($method === 'shalom' && !empty($ctx['ship_full_name']) && !empty($ctx['ship_phone'])) {
+            // Solo necesitamos DNI y sede
+            $fields = ['ship_dni', 'ship_shalom_branch'];
+        }
 
         $step = (int) ($ctx['shipping_data_step'] ?? 0);
         if ($step >= count($fields)) {
@@ -442,6 +469,11 @@ class SalesFlowService
         $state->context = $ctx;
         $state->save();
 
+        // Sincronizar datos del cliente después de guardar ship_full_name o ship_phone
+        if ($fields[$step - 1] === 'ship_full_name' || $fields[$step - 1] === 'ship_phone') {
+            $this->customerSync->syncFromConversationContext($state);
+        }
+
         if ($step >= count($fields)) {
             $ctx['shipping_data_text'] = $this->compileShippingData($ctx, $method);
             $state->context = $ctx;
@@ -453,9 +485,18 @@ class SalesFlowService
         return ['text' => $this->business->applyBrandCta($this->shippingDataPrompt($method, $step)), 'metadata' => []];
     }
 
-    protected function firstShippingDataPrompt(array $ctx): string
+    public function firstShippingDataPrompt(array $ctx): string
     {
         $method = (string) ($ctx['shipping_method'] ?? 'motorizado');
+
+        // Si ya tenemos card_full_name y card_phone, saltar a dirección directamente
+        if (!empty($ctx['card_full_name']) && !empty($ctx['card_phone'])) {
+            if ($method === 'motorizado') {
+                return '¿Tu dirección escrita?';
+            }
+            // Para Shalom, saltamos nombre y celular, vamos directo a DNI
+            return '¿Tu DNI?';
+        }
 
         return $this->shippingDataPrompt($method, 0);
     }
@@ -508,7 +549,31 @@ class SalesFlowService
 
         $productId = (int) ($ctx['current_product_id'] ?? 0);
         $color = (string) ($ctx['current_color'] ?? 'por confirmar');
-        $size = (string) ($ctx['current_size'] ?? 'M');
+        
+        // Usar talla del contexto si existe, si no, buscar una con stock
+        $size = (string) ($ctx['current_size'] ?? null);
+        if (!$size || $size === 'M') {
+            // Obtener stock por color para encontrar una talla disponible
+            $stockCheck = $this->tools->executeCheckStock($state, $productId, $color);
+            if (!isset($stockCheck['error']) && isset($stockCheck['stock_by_size'])) {
+                $stockBySize = $stockCheck['stock_by_size'];
+                // Buscar la primera talla con stock > 0
+                foreach ($stockBySize as $sizeKey => $stockQty) {
+                    if ($stockQty > 0) {
+                        $size = $sizeKey;
+                        $ctx['current_size'] = $size;
+                        $state->context = $ctx;
+                        $state->save();
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Si no hay talla con stock, usar 'M' como fallback
+        if (!$size) {
+            $size = 'M';
+        }
 
         if ($productId <= 0) {
             return [
@@ -549,19 +614,27 @@ class SalesFlowService
             $this->syncOrderPaymentFromContext($orderId, $ctx);
         }
 
+        // Si es flujo tarjeta, escalar a humano después de completar el pedido
+        $isCardFlow = !empty($ctx['card_flow']);
+
         $ctx['sales_stage'] = null;
         $ctx['last_order_id'] = $orderId > 0 ? $orderId : null;
+        $ctx['card_flow'] = null; // Limpiar flag
         $state->context = $ctx;
         $state->save();
 
         $hours = config('sales_flow.delivery_hours', 'Entregas L a S (5pm a 9pm).');
+        $message = "Perfecto hermosa 💕\nTu pedido quedó registrado correctamente ✨\n\nPedido #{$order['order_id']} | Total S/"
+                .number_format((float) ($order['total'] ?? $ctx['order_total'] ?? 0), 0)
+                ."\n\n{$hours}";
+
+        if ($isCardFlow) {
+            $this->tools->executeEscalateToHuman($state, 'Cliente solicitó link de pago con tarjeta');
+            $message .= "\n\nUn asesor te enviará el link de pago en breve 💕";
+        }
 
         return [
-            'text' => $this->business->applyBrandCta(
-                "Perfecto hermosa 💕\nTu pedido quedó registrado correctamente ✨\n\nPedido #{$order['order_id']} | Total S/"
-                .number_format((float) ($order['total'] ?? $ctx['order_total'] ?? 0), 0)
-                ."\n\n{$hours}"
-            ),
+            'text' => $this->business->applyBrandCta($message),
             'metadata' => [],
         ];
     }

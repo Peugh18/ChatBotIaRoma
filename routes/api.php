@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\BotMetricsController;
 use App\Http\Controllers\Api\BotSettingsController;
+use App\Http\Controllers\Api\CatalogVisionController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CompanySettingController;
 use App\Http\Controllers\Api\ConversationSalesContextController;
@@ -44,6 +45,8 @@ Route::middleware(['web', 'auth'])->group(function () {
     Route::put('company-settings', [CompanySettingController::class, 'update']);
     Route::get('bot-settings', [BotSettingsController::class, 'index']);
     Route::put('bot-settings', [BotSettingsController::class, 'update']);
+    Route::post('test-embedding', [CatalogVisionController::class, 'testEmbedding']);
+    Route::get('catalog-vision/stats', [CatalogVisionController::class, 'stats']);
     Route::get('bot-metrics', BotMetricsController::class);
     Route::get('/messages', [RomaSyncController::class, 'getMessages']);
     Route::post('/send-message', [RomaSyncController::class, 'sendMessage']);

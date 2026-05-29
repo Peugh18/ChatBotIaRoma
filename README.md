@@ -47,6 +47,9 @@ O configura cron: `* * * * * php /ruta/artisan schedule:run`
 | `ROMA_WEBHOOK_SECRET` | HMAC opcional |
 | `BOT_ENABLE_LLM_FALLBACK` | `true` para fallback LLM (Groq) |
 | `GROQ_API_KEY` | API Groq (también editable en `/bot-settings`) |
+| `HUGGINGFACE_TOKEN` | API Hugging Face para reconocimiento visual CLIP (también editable en `/bot-settings`) |
+| `CATALOG_VISION_ENABLED` | `true` para activar matching visual por embeddings CLIP |
+| `CATALOG_VISION_MIN_SIMILARITY` | Umbral de similitud coseno (default: `0.72`) |
 | `QUEUE_CONNECTION` | Usar `database` en desarrollo |
 | `PUSHER_*` / `VITE_PUSHER_*` | Chat en tiempo real |
 
@@ -60,6 +63,19 @@ WhatsApp → roma-api → POST /api/roma/messages
 ```
 
 Documentación detallada: `.agents/skills/roma-sales-bot/SKILL.md`
+
+## Reconocimiento visual (CLIP)
+
+Cuando un cliente envía una foto en un live, el bot puede buscar por **similitud visual** usando embeddings CLIP:
+
+1. `php artisan catalog:index-embeddings` — indexa fotos del catálogo
+2. `php artisan catalog:index-embeddings --force` — re-indexa todo
+3. `POST /api/test-embedding` — prueba que Hugging Face esté respondiendo
+
+El matching usa **cosine similarity** contra un índice en MySQL (`product_variants.embedding`).
+Si no hay token HF o el score es menor al umbral (0.72), cae al fallback de Groq vision + búsqueda textual.
+
+Requiere `HUGGINGFACE_TOKEN` en `.env` o en `/bot-settings`.
 
 ## Pantallas principales
 

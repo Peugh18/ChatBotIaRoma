@@ -7,6 +7,7 @@ export interface BotSettings {
     escalation_message: string;
     auto_reply_enabled: boolean;
     groq_api_key: string | null;
+    huggingface_token: string | null;
     model_chat: string;
     model_vision: string;
     reminder_3min_seconds: number;
