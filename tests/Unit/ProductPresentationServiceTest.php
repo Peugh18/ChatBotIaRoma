@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use Tests\TestCase;
 use App\Services\ProductPresentationService;
+use App\Services\SalesNudgeService;
 use App\Services\ToolExecutorService;
 use App\Services\BusinessConfigService;
 use App\Services\ProductMediaService;
@@ -79,11 +80,7 @@ class ProductPresentationServiceTest extends TestCase
             ->andReturn([['color' => 'Rojo', 'has_stock' => true]]);
 
         // Crear el servicio con los mocks
-        $service = new ProductPresentationService(
-            $toolExecutorMock,
-            $businessConfigMock,
-            $productMediaMock
-        );
+        $service = $this->makePresentationService($toolExecutorMock, $businessConfigMock, $productMediaMock);
 
         $result = $service->handleColorSelection($state, 'pick_color_' . $product->id . '_rojo');
 
@@ -154,11 +151,7 @@ class ProductPresentationServiceTest extends TestCase
         $productMediaMock->shouldReceive('colorsForProduct')
             ->andReturn([['color' => 'Rojo', 'has_stock' => true]]);
 
-        $service = new ProductPresentationService(
-            $toolExecutorMock,
-            $businessConfigMock,
-            $productMediaMock
-        );
+        $service = $this->makePresentationService($toolExecutorMock, $businessConfigMock, $productMediaMock);
 
         $result = $service->handleColorSelection($state, 'pick_color_' . $product->id . '_rojo');
 
@@ -226,11 +219,7 @@ class ProductPresentationServiceTest extends TestCase
         $businessConfigMock->shouldReceive('applyBrandCta')
             ->andReturnUsing(fn($text) => $text);
 
-        $service = new ProductPresentationService(
-            $toolExecutorMock,
-            $businessConfigMock,
-            Mockery::mock(ProductMediaService::class)
-        );
+        $service = $this->makePresentationService($toolExecutorMock, $businessConfigMock);
 
         $result = $service->handleSizeSelection($state, 'Quiero talla M');
 
@@ -309,11 +298,7 @@ class ProductPresentationServiceTest extends TestCase
         $productMediaMock->shouldReceive('colorsForProduct')
             ->andReturn([['color' => 'Rojo', 'has_stock' => true]]);
 
-        $service = new ProductPresentationService(
-            $toolExecutorMock,
-            $businessConfigMock,
-            $productMediaMock
-        );
+        $service = $this->makePresentationService($toolExecutorMock, $businessConfigMock, $productMediaMock);
 
         $result = $service->handleColorSelection($state, 'pick_color_' . $product->id . '_rojo');
 
@@ -373,11 +358,7 @@ class ProductPresentationServiceTest extends TestCase
         $productMediaMock->shouldReceive('colorsForProduct')
             ->andReturn([['color' => 'Rojo', 'has_stock' => true]]);
 
-        $service = new ProductPresentationService(
-            $toolExecutorMock,
-            $businessConfigMock,
-            $productMediaMock
-        );
+        $service = $this->makePresentationService($toolExecutorMock, $businessConfigMock, $productMediaMock);
 
         $result = $service->handleColorSelection($state, 'pick_color_' . $product->id . '_rojo');
 
@@ -439,11 +420,7 @@ class ProductPresentationServiceTest extends TestCase
         $productMediaMock->shouldReceive('colorsForProduct')
             ->andReturn([['color' => 'Lila', 'has_stock' => true]]);
 
-        $service = new ProductPresentationService(
-            $toolExecutorMock,
-            $businessConfigMock,
-            $productMediaMock
-        );
+        $service = $this->makePresentationService($toolExecutorMock, $businessConfigMock, $productMediaMock);
 
         $result = $service->handleColorSelection($state, 'pick_color_' . $product->id . '_lila');
 
@@ -505,11 +482,7 @@ class ProductPresentationServiceTest extends TestCase
         $productMediaMock->shouldReceive('colorsForProduct')
             ->andReturn([['color' => 'Rojo', 'has_stock' => true]]);
 
-        $service = new ProductPresentationService(
-            $toolExecutorMock,
-            $businessConfigMock,
-            $productMediaMock
-        );
+        $service = $this->makePresentationService($toolExecutorMock, $businessConfigMock, $productMediaMock);
 
         $result = $service->handleColorSelection($state, 'pick_color_' . $product->id . '_rojo');
 
@@ -570,17 +543,32 @@ class ProductPresentationServiceTest extends TestCase
 
         $productMediaMock = Mockery::mock(ProductMediaService::class);
 
-        $service = new ProductPresentationService(
-            $toolExecutorMock,
-            $businessConfigMock,
-            $productMediaMock
-        );
+        $service = $this->makePresentationService($toolExecutorMock, $businessConfigMock, $productMediaMock);
 
         $result = $service->handleColorSelection($state, 'Muéstrame en color camel');
 
         $this->assertNotNull($result);
         $this->assertStringContainsString('Color Camel', $result['text']);
         $this->assertEquals('Camel', $state->fresh()->context['current_color']);
+    }
+
+    private function makePresentationService(
+        $toolExecutor,
+        $business,
+        $media = null,
+        $salesNudge = null
+    ): ProductPresentationService {
+        $salesNudgeMock = $salesNudge ?? Mockery::mock(SalesNudgeService::class);
+        $salesNudgeMock->shouldReceive('orderConfirmationText')
+            ->zeroOrMoreTimes()
+            ->andReturn("Último paso hermosa\n\n¿Confirmamos tu pedido? 💕");
+
+        return new ProductPresentationService(
+            $toolExecutor,
+            $business,
+            $media ?? Mockery::mock(ProductMediaService::class),
+            $salesNudgeMock
+        );
     }
 
     protected function tearDown(): void

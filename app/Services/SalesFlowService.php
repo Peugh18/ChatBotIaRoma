@@ -844,13 +844,23 @@ class SalesFlowService
         return $zone?->district;
     }
 
+    public function isPositivePublic(string $msg): bool
+    {
+        return $this->isPositive(mb_strtolower(trim($msg)));
+    }
+
+    public function isNegativePublic(string $msg): bool
+    {
+        return $this->isNegative(mb_strtolower(trim($msg)));
+    }
+
     protected function isPositive(string $msg): bool
     {
-        return (bool) preg_match('/\b(si|sí|confirmo|quiero|dale|ok|listo|procede|proceder|confirmar pedido|continuar)\b/u', $msg);
+        return (bool) preg_match('/\b(si|sí|confirmo|quiero|dale|ok|listo|procede|proceder|confirmar pedido|continuar|me lo llevo|separar|separalo|s[eé]paralo)\b/u', $msg);
     }
 
     protected function isNegative(string $msg): bool
     {
-        return (bool) preg_match('/\b(no|luego|despues|después|solo viendo|solo mirando)\b/u', $msg);
+        return (bool) preg_match('/\b(no quiero|no gracias|solo viendo|solo mirando)\b/u', $msg);
     }
 }

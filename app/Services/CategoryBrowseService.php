@@ -17,6 +17,7 @@ class CategoryBrowseService
         protected BusinessConfigService $business,
         protected ProductPresentationService $presentation,
         protected ProductMediaService $media,
+        protected CatalogMatchPresenterService $matchPresenter,
     ) {}
 
     /**
@@ -369,6 +370,13 @@ class CategoryBrowseService
         $count = (int) ($searchResult['count'] ?? 0);
         if ($count === 1) {
             return $this->presentation->presentProductPick($state, (int) $searchResult['products'][0]['id']);
+        }
+
+        if ($count >= 2 && $count <= 3) {
+            return $this->matchPresenter->presentProductOptions(
+                $state,
+                array_slice($searchResult['products'] ?? [], 0, 3)
+            );
         }
 
         $ctx = $state->context ?? [];
