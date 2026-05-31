@@ -38,6 +38,7 @@ return [
     'roma' => [
         'url' => env('ROMA_API_URL'),
         'token' => env('ROMA_SYNC_TOKEN'),
+        'wa_token' => env('WA_TOKEN'),
         'webhook_secret' => env('ROMA_WEBHOOK_SECRET'),
         // Contrato WhatsApp v1: text, image, interactive (kind button|list), template
         'contract_version' => 1,

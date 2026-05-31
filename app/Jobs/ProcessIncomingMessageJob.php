@@ -326,6 +326,38 @@ class ProcessIncomingMessageJob implements ShouldQueue
                 $imageUrl = $incomingMeta['image_url'] ?? null;
             }
 
+            // Descargar imagen localmente si viene de Meta (las URLs expiran rápido)
+            if ($imageUrl && (str_contains((string)$imageUrl, 'lookaside.fbsbx.com') || str_contains((string)$imageUrl, 'graph.facebook.com'))) {
+                $waToken = config('services.roma.wa_token');
+                if ($waToken) {
+                    $imgRes = \Illuminate\Support\Facades\Http::withHeaders([
+                        'Authorization' => 'Bearer ' . $waToken,
+                        'User-Agent' => 'curl/7.68.0'
+                    ])->get($imageUrl);
+
+                    if ($imgRes->successful()) {
+                        $ext = 'jpg';
+                        $mime = $imgRes->header('Content-Type') ?? 'image/jpeg';
+                        if (str_contains($mime, 'png')) $ext = 'png';
+                        if (str_contains($mime, 'webp')) $ext = 'webp';
+
+                        $filename = 'customers/media/' . uniqid('img_') . '.' . $ext;
+                        \Illuminate\Support\Facades\Storage::disk('public')->put($filename, $imgRes->body());
+                        
+                        $imageUrl = \Illuminate\Support\Facades\Storage::disk('public')->url($filename);
+                        
+                        // Actualizar DB
+                        if (is_array($this->message->metadata)) {
+                            $newMeta = $this->message->metadata;
+                            $newMeta['image_url'] = $imageUrl;
+                            $this->message->update(['metadata' => $newMeta]);
+                        }
+                    } else {
+                        Log::warning('ProcessIncomingMessageJob: falló descarga de imagen de Meta', ['status' => $imgRes->status()]);
+                    }
+                }
+            }
+
             $result = $botService->process(
                 $this->message->phone_number,
                 $this->message->content,

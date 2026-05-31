@@ -173,56 +173,31 @@ class ProductPresentationService
         $validation = $product ? PriceValidatorService::validateProductPrice($product) : ['final_price' => 0];
         $price = number_format((float) ($validation['final_price'] ?? 0), 0);
 
-        // Si hay foto del color, enviar imagen + texto tallas
-        // Si NO hay foto, enviar SOLO texto sin foto de otro color
-        if ($imageResult['success'] ?? false) {
-            $text = "Color {$color} 📸\n💰 S/{$price}\n📏 Tallas con stock: {$sizes}\n\n¿Qué talla necesitas?";
-        } else {
-            $text = "Color {$color} seleccionado 💕 (foto en camino / consulta con asesor)\n💰 S/{$price}\n📏 Tallas con stock: {$sizes}\n\n¿Qué talla necesitas?";
+        $text = "Color {$color} 📸\n💰 S/{$price}\n📏 Tallas con stock: {$sizes}\n\n¿Qué talla necesitas?";
+        
+        $sizeButtons = [];
+        $stockBySize = $stock['stock_by_size'] ?? [];
+        foreach ($stockBySize as $sz => $qty) {
+            if ((int) $qty > 0) {
+                $szStr = strtoupper((string) $sz);
+                $sizeButtons[] = ['id' => 'size_' . strtolower($szStr), 'title' => 'Talla ' . $szStr];
+            }
         }
-
-        // Generar botones dinámicos basados en stock real
-        $availableSizes = array_filter($stockBySize, fn ($qty) => (int) $qty > 0);
-        $sizeKeys = array_keys($availableSizes);
-
-        if (count($sizeKeys) === 0) {
-            return [
-                'text' => $this->business->applyBrandCta("Lo siento, el color {$color} no tiene stock disponible en ninguna talla. ¿Quieres otro color?"),
-                'metadata' => [],
+        
+        if (empty($sizeButtons)) {
+            $sizeButtons = [
+                ['id' => 'size_s', 'title' => 'Talla S'],
+                ['id' => 'size_m', 'title' => 'Talla M'],
+                ['id' => 'size_l', 'title' => 'Talla L'],
             ];
         }
 
-        // Guardar tallas disponibles en contexto para validación posterior
-        $ctx['available_sizes'] = $sizeKeys;
-        $state->context = $ctx;
-        $state->save();
-
-        if (count($sizeKeys) <= 3) {
-            $buttons = [];
-            foreach ($sizeKeys as $size) {
-                $buttons[] = [
-                    'id' => 'size_' . mb_strtolower($size),
-                    'title' => 'Talla ' . strtoupper($size),
-                ];
-            }
-            $this->tools->executeSendInteractiveButtons($state, $text, $buttons, 'Elige talla');
-        } else {
-            $rows = [];
-            foreach (array_slice($sizeKeys, 0, 10) as $size) {
-                $rows[] = [
-                    'id' => 'size_' . mb_strtolower($size),
-                    'title' => 'Talla ' . strtoupper($size),
-                    'description' => 'Disponible',
-                ];
-            }
-            $this->tools->executeSendInteractiveList(
-                $state,
-                $text,
-                'Ver tallas',
-                [['title' => 'Tallas', 'rows' => $rows]],
-                'Elige talla'
-            );
-        }
+        $this->tools->executeSendInteractiveButtons(
+            $state,
+            $text,
+            $sizeButtons,
+            'Elige talla'
+        );
 
         if (!($imageResult['success'] ?? false)) {
             $text .= "\n(No tengo foto de ese color cargada, pero sí lo tenemos).";

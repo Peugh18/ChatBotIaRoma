@@ -349,7 +349,12 @@ const showSelectedPhoneSubtitle = computed(() => {
                                             message.direction === 'incoming' ? 'chat-bubble-in' : 'chat-bubble-out'
                                         "
                                     >
-                                        <p class="whitespace-pre-wrap break-words text-xs leading-relaxed sm:text-sm">{{ message.content }}</p>
+                                        <div v-if="message.metadata?.image_url" class="mb-2">
+                                            <a :href="`/whatsapp-media/proxy?url=${encodeURIComponent(message.metadata.image_url)}`" target="_blank" rel="noopener noreferrer">
+                                                <img :src="`/whatsapp-media/proxy?url=${encodeURIComponent(message.metadata.image_url)}`" class="max-w-full rounded-md object-contain max-h-48" alt="Imagen enviada por el cliente" />
+                                            </a>
+                                        </div>
+                                        <p v-if="message.content" class="whitespace-pre-wrap break-words text-xs leading-relaxed sm:text-sm">{{ message.content }}</p>
                                         <div
                                             class="mt-1 flex items-center justify-between gap-4 text-[10px]"
                                             :class="
@@ -424,7 +429,7 @@ const showSelectedPhoneSubtitle = computed(() => {
                                             </p>
                                             <a
                                                 v-if="salesContext?.payment_validation?.payment_proof_url"
-                                                :href="salesContext.payment_validation.payment_proof_url"
+                                                :href="`/whatsapp-media/proxy?url=${encodeURIComponent(salesContext.payment_validation.payment_proof_url)}`"
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 class="mt-1 inline-block text-[11px] font-medium text-emerald-700 underline dark:text-emerald-300"
