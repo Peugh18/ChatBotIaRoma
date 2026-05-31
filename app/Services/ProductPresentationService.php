@@ -14,7 +14,8 @@ class ProductPresentationService
     public function __construct(
         protected ToolExecutorService $tools,
         protected BusinessConfigService $business,
-        protected ProductMediaService $media
+        protected ProductMediaService $media,
+        protected SalesNudgeService $salesNudge
     ) {
     }
 
@@ -300,10 +301,7 @@ class ProductPresentationService
         $state->context = $ctx;
         $state->save();
 
-        $product = Product::find($productId);
-        $card = $product ? $this->buildProductCard($product) : '';
-        $stockLine = "Talla {$size} disponible ✅";
-        $text = "{$card}\n\n{$stockLine}\n\n" . $this->business->orderConfirmationPrompt();
+        $text = $this->salesNudge->orderConfirmationText($state);
 
         $this->tools->executeSendInteractiveButtons(
             $state,

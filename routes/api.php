@@ -47,6 +47,7 @@ Route::middleware(['web', 'auth'])->group(function () {
     Route::put('bot-settings', [BotSettingsController::class, 'update']);
     Route::post('test-embedding', [CatalogVisionController::class, 'testEmbedding']);
     Route::get('catalog-vision/stats', [CatalogVisionController::class, 'stats']);
+    Route::post('catalog-vision/reindex', [CatalogVisionController::class, 'reindex']);
     Route::get('bot-metrics', BotMetricsController::class);
     Route::get('/messages', [RomaSyncController::class, 'getMessages']);
     Route::post('/send-message', [RomaSyncController::class, 'sendMessage']);

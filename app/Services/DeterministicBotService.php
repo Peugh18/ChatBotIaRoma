@@ -18,7 +18,8 @@ class DeterministicBotService
         protected SalesFlowService $salesFlow,
         protected CatalogImageMatcherService $imageMatcher,
         protected ProductPresentationService $presentation,
-        protected CategoryBrowseService $categoryBrowse
+        protected CategoryBrowseService $categoryBrowse,
+        protected SalesNudgeService $salesNudge
     ) {}
 
     /**
@@ -98,6 +99,14 @@ class DeterministicBotService
                 $this->metrics->resetFailureStreak($phoneNumber);
 
                 return $sizeResponse;
+            }
+
+            $nudgeResponse = $this->salesNudge->tryRespond($state, $normalized, $hasInboundImage);
+            if ($nudgeResponse !== null) {
+                $this->metrics->incrementIntent('sales_nudge');
+                $this->metrics->resetFailureStreak($phoneNumber);
+
+                return $nudgeResponse;
             }
 
             $hasImage = $hasInboundImage;
@@ -612,7 +621,7 @@ class DeterministicBotService
                 'awaiting_color_selection',
                 'awaiting_size_selection',
             ], true)) {
-                return ['text' => $this->business->applyBrandCta('Elige una opción de la lista o escríbeme el número 💕'), 'metadata' => []];
+                return ['text' => $this->business->applyBrandCta(config('sales_copy.stuck_in_stage')), 'metadata' => []];
             }
 
             return $this->categoryBrowse->presentCategorySelection($state);

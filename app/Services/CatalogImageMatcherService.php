@@ -24,7 +24,8 @@ class CatalogImageMatcherService
         protected LlmService $llmService,
         protected ProductPresentationService $presentation,
         protected BusinessConfigService $business,
-        protected ImageEmbeddingService $embeddingService
+        protected ImageEmbeddingService $embeddingService,
+        protected CatalogMatchPresenterService $matchPresenter
     ) {
     }
 
@@ -77,41 +78,8 @@ class CatalogImageMatcherService
         }
 
         $products = array_slice($result['products'] ?? [], 0, 3);
-        $ctx = $state->context ?? [];
-        $ctx['sales_stage'] = 'awaiting_product_selection';
-        $ctx['last_shown_products'] = array_map(fn ($p) => [
-            'id' => $p['id'],
-            'name' => $p['name'],
-            'final_price' => $p['final_price'] ?? null,
-        ], $products);
-        $state->context = $ctx;
-        $state->save();
 
-        $lines = ["✨ Hermosa, encontramos estos modelos parecidos:", ''];
-        foreach ($products as $i => $p) {
-            $lines[] = ($i + 1) . '. ' . $p['name'];
-        }
-        $lines[] = '';
-        $lines[] = '¿Cuál deseas consultar? 💕';
-
-        $text = implode("\n", $lines);
-        $buttons = [];
-        foreach ($products as $p) {
-            $buttons[] = [
-                'id' => 'pick_product_' . $p['id'],
-                'title' => mb_substr((string) $p['name'], 0, 20),
-            ];
-        }
-
-        if (!empty($buttons)) {
-            $this->tools->executeSendInteractiveButtons($state, $text, array_slice($buttons, 0, 3), 'Elige modelo');
-        }
-
-        return [
-            'text' => $this->business->applyBrandCta($text),
-            'metadata' => [],
-            'matched' => true,
-        ];
+        return $this->matchPresenter->presentProductOptions($state, $products);
     }
 
     /**
@@ -245,7 +213,6 @@ class CatalogImageMatcherService
             return $response;
         }
 
-        // Multiple matches: show selection
         Log::info('CatalogImageMatcher: Multiple matches found', [
             'count' => count($matches),
             'top_score' => $matches[0]['score'] ?? null,
@@ -253,41 +220,13 @@ class CatalogImageMatcherService
             'conversation_id' => $state->conversation_id,
         ]);
 
-        $ctx = $state->context ?? [];
-        $ctx['sales_stage'] = 'awaiting_product_selection';
-        $ctx['last_shown_products'] = array_map(fn ($m) => [
+        $products = array_map(fn ($m) => [
             'id' => $m['product_id'],
             'name' => $m['product_name'],
-            'final_price' => $m['final_price'],
+            'final_price' => $m['final_price'] ?? null,
         ], $matches);
-        $state->context = $ctx;
-        $state->save();
 
-        $lines = ["✨ Hermosa, encontramos estos modelos parecidos:", ''];
-        foreach ($matches as $i => $m) {
-            $lines[] = ($i + 1) . '. ' . $m['product_name'];
-        }
-        $lines[] = '';
-        $lines[] = '¿Cuál deseas consultar? 💕';
-
-        $text = implode("\n", $lines);
-        $buttons = [];
-        foreach ($matches as $m) {
-            $buttons[] = [
-                'id' => 'pick_product_' . $m['product_id'],
-                'title' => mb_substr((string) $m['product_name'], 0, 20),
-            ];
-        }
-
-        if (!empty($buttons)) {
-            $this->tools->executeSendInteractiveButtons($state, $text, array_slice($buttons, 0, 3), 'Elige modelo');
-        }
-
-        return [
-            'text' => $this->business->applyBrandCta($text),
-            'metadata' => [],
-            'matched' => true,
-        ];
+        return $this->matchPresenter->presentProductOptions($state, $products);
     }
 
     protected function describeImageForSearch(string $imageUrl, ?string $userText): string

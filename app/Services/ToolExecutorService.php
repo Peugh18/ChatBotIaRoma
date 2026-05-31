@@ -257,9 +257,70 @@ class ToolExecutorService
     {
         Log::info('ToolExecutorService: executeSendProductImage', ['product_id' => $productId, 'color' => $color]);
 
+        $resolved = $this->resolveProductImage($productId, $color);
+        if (! ($resolved['success'] ?? false)) {
+            return $resolved;
+        }
+
+        $context = $state->context;
+        $context['pending_image_url'] = $resolved['image_url'];
+        $context['pending_image_caption'] = $resolved['caption'];
+        $context['current_product_id'] = $productId;
+        $context['current_product_name'] = $resolved['product_name'];
+        if ($color) {
+            $context['current_color'] = $resolved['color'] ?? $color;
+        }
+        $state->context = $context;
+        $state->save();
+
+        return [
+            'success' => true,
+            'image_url' => $resolved['image_url'],
+            'caption' => $resolved['caption'],
+            'message' => "La imagen de {$resolved['product_name']} ha sido encolada para ser enviada adjunta al mensaje final de texto.",
+        ];
+    }
+
+    /**
+     * Encola foto de producto para envío antes del texto (varias opciones en live).
+     */
+    public function enqueueProductImage(ConversationState $state, int $productId, ?string $color = null, ?string $caption = null): array
+    {
+        $resolved = $this->resolveProductImage($productId, $color);
+        if (! ($resolved['success'] ?? false)) {
+            Log::info('ToolExecutorService: enqueueProductImage skipped (no image)', [
+                'product_id' => $productId,
+                'error' => $resolved['error'] ?? null,
+            ]);
+
+            return $resolved;
+        }
+
+        $context = $state->context ?? [];
+        $queue = $context['pending_image_queue'] ?? [];
+        $queue[] = [
+            'url' => $resolved['image_url'],
+            'caption' => $resolved['caption'],
+        ];
+        $context['pending_image_queue'] = $queue;
+        $state->context = $context;
+        $state->save();
+
+        return [
+            'success' => true,
+            'image_url' => $resolved['image_url'],
+            'caption' => $resolved['caption'],
+        ];
+    }
+
+    /**
+     * @return array{success: bool, image_url?: string, caption?: string, product_name?: string, color?: string, error?: string}
+     */
+    protected function resolveProductImage(int $productId, ?string $color = null, ?string $caption = null): array
+    {
         $product = Product::with(['variants', 'images'])->find($productId);
-        if (!$product) {
-            return ['error' => 'Producto no encontrado'];
+        if (! $product) {
+            return ['success' => false, 'error' => 'Producto no encontrado'];
         }
 
         $imageUrl = null;
@@ -317,22 +378,12 @@ class ToolExecutorService
                 ? 'Color '.($variant?->color ?? $color).' 📸'
                 : "✨ {$product->name} 📸");
 
-        $context = $state->context;
-        $context['pending_image_url'] = $imageUrl;
-        $context['pending_image_caption'] = $resolvedCaption;
-        $context['current_product_id'] = $productId;
-        $context['current_product_name'] = $product->name;
-        if ($color) {
-            $context['current_color'] = $variant?->color ?? $color;
-        }
-        $state->context = $context;
-        $state->save();
-
         return [
             'success' => true,
             'image_url' => $imageUrl,
             'caption' => $resolvedCaption,
-            'message' => "La imagen de {$product->name} ha sido encolada para ser enviada adjunta al mensaje final de texto.",
+            'product_name' => $product->name,
+            'color' => $variant?->color,
         ];
     }
 
