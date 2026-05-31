@@ -104,8 +104,27 @@ class CatalogImageMatcherService
             return trim((string) $userText);
         }
 
+        $finalImageUrl = $imageUrl;
+        if (str_contains((string)$imageUrl, 'lookaside.fbsbx.com') || str_contains((string)$imageUrl, 'graph.facebook.com')) {
+            $waToken = config('services.roma.wa_token');
+            if ($waToken) {
+                $imgRes = \Illuminate\Support\Facades\Http::withHeaders([
+                    'Authorization' => 'Bearer ' . $waToken,
+                    'User-Agent' => 'curl/7.68.0'
+                ])->get($imageUrl);
+                
+                if ($imgRes->successful()) {
+                    $type = $imgRes->header('Content-Type') ?? 'image/jpeg';
+                    $base64 = base64_encode($imgRes->body());
+                    $finalImageUrl = "data:{$type};base64,{$base64}";
+                } else {
+                    \Illuminate\Support\Facades\Log::warning('CatalogImageMatcher: falló descarga de imagen de Meta', ['status' => $imgRes->status()]);
+                }
+            }
+        }
+
         try {
-            $response = Http::withToken($apiKey)
+            $response = \Illuminate\Support\Facades\Http::withToken($apiKey)
                 ->timeout(25)
                 ->post('https://api.groq.com/openai/v1/chat/completions', [
                     'model' => $settings->model_vision ?: 'meta-llama/llama-4-scout-17b-16e-instruct',
@@ -118,7 +137,7 @@ class CatalogImageMatcherService
                             'role' => 'user',
                             'content' => [
                                 ['type' => 'text', 'text' => 'Identifica tipo de vestido, color visible y palabras clave para buscar en catálogo.'],
-                                ['type' => 'image_url', 'image_url' => ['url' => $imageUrl]],
+                                ['type' => 'image_url', 'image_url' => ['url' => $finalImageUrl]],
                             ],
                         ],
                     ],

@@ -17,6 +17,10 @@ Broadcast::routes(['middleware' => ['web', 'auth']]);
 Route::get('/whatsapp-media/variants/{variant}', [WhatsappMediaController::class, 'variant'])
     ->name('whatsapp-media.variant');
 
+Route::get('/whatsapp-media/proxy', [WhatsappMediaController::class, 'proxy'])
+    ->middleware('auth')
+    ->name('whatsapp-media.proxy');
+
 Route::get('/', function () {
     return Inertia::render('Welcome');
 })->name('home');

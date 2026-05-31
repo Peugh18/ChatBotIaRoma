@@ -152,14 +152,28 @@ class ProductPresentationService
         $price = number_format((float) ($validation['final_price'] ?? 0), 0);
 
         $text = "Color {$color} 📸\n💰 S/{$price}\n📏 Tallas con stock: {$sizes}\n\n¿Qué talla necesitas?";
-        $this->tools->executeSendInteractiveButtons(
-            $state,
-            $text,
-            [
+        
+        $sizeButtons = [];
+        $stockBySize = $stock['stock_by_size'] ?? [];
+        foreach ($stockBySize as $sz => $qty) {
+            if ((int) $qty > 0) {
+                $szStr = strtoupper((string) $sz);
+                $sizeButtons[] = ['id' => 'size_' . strtolower($szStr), 'title' => 'Talla ' . $szStr];
+            }
+        }
+        
+        if (empty($sizeButtons)) {
+            $sizeButtons = [
                 ['id' => 'size_s', 'title' => 'Talla S'],
                 ['id' => 'size_m', 'title' => 'Talla M'],
                 ['id' => 'size_l', 'title' => 'Talla L'],
-            ],
+            ];
+        }
+
+        $this->tools->executeSendInteractiveButtons(
+            $state,
+            $text,
+            $sizeButtons,
             'Elige talla'
         );
 
