@@ -4,11 +4,18 @@ namespace App\Services;
 
 use App\Models\ConversationState;
 use App\Models\Product;
+use App\Models\ProductVariant;
+use App\Support\VectorSimilarity;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Etapa 2: imagen del cliente → hasta 3 coincidencias del catálogo (BD).
+ * 
+ * Flujo:
+ * 1. Intentar match por embeddings CLIP (si HF token + variantes indexadas)
+ * 2. Si score < umbral o sin token HF → fallback a Groq vision + text search
+ * 3. Mostrar 1 match claro, 2-3 opciones, o 0 matches
  */
 class CatalogImageMatcherService
 {
@@ -16,7 +23,9 @@ class CatalogImageMatcherService
         protected ToolExecutorService $tools,
         protected LlmService $llmService,
         protected ProductPresentationService $presentation,
-        protected BusinessConfigService $business
+        protected BusinessConfigService $business,
+        protected ImageEmbeddingService $embeddingService,
+        protected CatalogMatchPresenterService $matchPresenter
     ) {
     }
 
@@ -25,6 +34,16 @@ class CatalogImageMatcherService
      */
     public function matchFromImage(ConversationState $state, string $imageUrl, ?string $userText = null): array
     {
+        // Intentar match por embeddings CLIP primero
+        if (config('catalog-vision.enabled')) {
+            $clipMatches = $this->matchByEmbedding($imageUrl);
+            if (!empty($clipMatches)) {
+                return $this->handleMatches($state, $clipMatches, $userText);
+            }
+        }
+
+        // Fallback: Groq vision + text search (flujo original)
+        Log::info('CatalogImageMatcher: Falling back to Groq vision + text search');
         $colorOverride = $this->extractColorFromText($userText);
         $searchQuery = $this->describeImageForSearch($imageUrl, $userText);
 
@@ -59,41 +78,155 @@ class CatalogImageMatcherService
         }
 
         $products = array_slice($result['products'] ?? [], 0, 3);
-        $ctx = $state->context ?? [];
-        $ctx['sales_stage'] = 'awaiting_product_selection';
-        $ctx['last_shown_products'] = array_map(fn ($p) => [
-            'id' => $p['id'],
-            'name' => $p['name'],
-            'final_price' => $p['final_price'] ?? null,
-        ], $products);
-        $state->context = $ctx;
-        $state->save();
 
-        $lines = ["✨ Hermosa, encontramos estos modelos parecidos:", ''];
-        foreach ($products as $i => $p) {
-            $lines[] = ($i + 1) . '. ' . $p['name'];
+        return $this->matchPresenter->presentProductOptions($state, $products);
+    }
+
+    /**
+     * Match image by CLIP embedding similarity.
+     *
+     * @param  string  $imageUrl
+     * @return array<array{variant_id: int, product_id: int, product_name: string, color: string, score: float, final_price: float}>
+     */
+    private function matchByEmbedding(string $imageUrl): array
+    {
+        try {
+            // Get embedding for inbound image
+            $queryEmbedding = $this->embeddingService->getEmbedding($imageUrl);
+            if (!$queryEmbedding) {
+                Log::warning('CatalogImageMatcher: Failed to get embedding for inbound image');
+                return [];
+            }
+
+            // Get indexed variants with embeddings (cached for 1 hour)
+            $variants = \Illuminate\Support\Facades\Cache::remember('catalog:indexed-variants', 3600, function () {
+                return ProductVariant::query()
+                    ->whereNotNull('embedding')
+                    ->with('product')
+                    ->get();
+            });
+
+            if ($variants->isEmpty()) {
+                Log::info('CatalogImageMatcher: No indexed variants found');
+                return [];
+            }
+
+            // Calculate similarity for each variant
+            $matches = [];
+            $minSimilarity = config('catalog-vision.min_similarity', 0.72);
+
+            foreach ($variants as $variant) {
+                $embedding = $variant->embedding;
+                if (!is_array($embedding) || empty($embedding)) {
+                    continue;
+                }
+
+                $score = VectorSimilarity::cosineSimilarity($queryEmbedding, $embedding);
+
+                if ($score >= $minSimilarity) {
+                    $matches[] = [
+                        'variant_id' => $variant->id,
+                        'product_id' => $variant->product_id,
+                        'product_name' => $variant->product->name,
+                        'color' => $variant->color,
+                        'score' => $score,
+                        'final_price' => $variant->product->price - ($variant->product->discount ?? 0),
+                    ];
+                }
+            }
+
+            // Un producto = una opción (mejor variant por score)
+            $byProduct = [];
+            foreach ($matches as $match) {
+                $pid = $match['product_id'];
+                if (! isset($byProduct[$pid]) || $match['score'] > $byProduct[$pid]['score']) {
+                    $byProduct[$pid] = $match;
+                }
+            }
+            $matches = array_values($byProduct);
+
+            usort($matches, fn ($a, $b) => $b['score'] <=> $a['score']);
+            $topK = config('catalog-vision.top_k', 3);
+            $matches = array_slice($matches, 0, $topK);
+
+            if (!empty($matches)) {
+                Log::info('CatalogImageMatcher: Found matches by embedding', [
+                    'count' => count($matches),
+                    'top_score' => $matches[0]['score'],
+                ]);
+            }
+
+            return $matches;
+        } catch (\Exception $e) {
+            Log::error('CatalogImageMatcher: Error in matchByEmbedding', [
+                'error' => $e->getMessage(),
+            ]);
+            return [];
         }
-        $lines[] = '';
-        $lines[] = '¿Cuál deseas consultar? 💕';
+    }
 
-        $text = implode("\n", $lines);
-        $buttons = [];
-        foreach ($products as $p) {
-            $buttons[] = [
-                'id' => 'pick_product_' . $p['id'],
-                'title' => mb_substr((string) $p['name'], 0, 20),
-            ];
+    /**
+     * Handle matches from embedding or text search.
+     *
+     * @param  ConversationState  $state
+     * @param  array  $matches
+     * @param  string|null  $userText
+     * @return array{text: string, metadata: array, matched: bool}
+     */
+    private function handleMatches(ConversationState $state, array $matches, ?string $userText = null): array
+    {
+        if (empty($matches)) {
+            return ['text' => '', 'metadata' => [], 'matched' => false];
         }
 
-        if (!empty($buttons)) {
-            $this->tools->executeSendInteractiveButtons($state, $text, array_slice($buttons, 0, 3), 'Elige modelo');
+        // Extract color preference from best match if available
+        $colorPreference = $matches[0]['color'] ?? $this->extractColorFromText($userText);
+
+        // Single clear match
+        if (count($matches) === 1) {
+            $match = $matches[0];
+            $product = Product::find($match['product_id']);
+            if (!$product) {
+                return ['text' => '', 'metadata' => [], 'matched' => false];
+            }
+
+            // Log single match found
+            Log::info('CatalogImageMatcher: Single match found', [
+                'variant_id' => $match['variant_id'] ?? null,
+                'product_id' => $match['product_id'],
+                'product_name' => $match['product_name'],
+                'color' => $match['color'],
+                'score' => $match['score'] ?? null,
+                'conversation_id' => $state->conversation_id,
+            ]);
+
+            if ($colorPreference) {
+                $ctx = $state->context ?? [];
+                $ctx['image_color_preference'] = $colorPreference;
+                $state->context = $ctx;
+                $state->save();
+            }
+
+            $response = $this->presentation->presentProductPick($state, $product->id);
+            $response['matched'] = true;
+
+            return $response;
         }
 
-        return [
-            'text' => $this->business->applyBrandCta($text),
-            'metadata' => [],
-            'matched' => true,
-        ];
+        Log::info('CatalogImageMatcher: Multiple matches found', [
+            'count' => count($matches),
+            'top_score' => $matches[0]['score'] ?? null,
+            'product_ids' => array_map(fn ($m) => $m['product_id'], $matches),
+            'conversation_id' => $state->conversation_id,
+        ]);
+
+        $products = array_map(fn ($m) => [
+            'id' => $m['product_id'],
+            'name' => $m['product_name'],
+            'final_price' => $m['final_price'] ?? null,
+        ], $matches);
+
+        return $this->matchPresenter->presentProductOptions($state, $products);
     }
 
     protected function describeImageForSearch(string $imageUrl, ?string $userText): string

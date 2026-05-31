@@ -93,42 +93,94 @@ const variantPreviewUrl = (variant: ProductVariant): string | null => {
 };
 
 const onVariantPhotoSelected = (variant: ProductVariant, event: Event) => {
+    console.log('onVariantPhotoSelected called');
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
-    if (!file) return;
-    variant.pendingFile = file;
-    if (variant.id) {
-        uploadVariantPhoto(variant);
+    console.log('File selected:', file);
+    if (!file) {
+        console.log('No file selected, returning');
+        return;
     }
+    variant.pendingFile = file;
+    console.log('File set as pending, variant ID:', variant.id);
+};
+
+const uploadVariantPhotoForId = async (variantId: number, file: File): Promise<{ image_path: string; public_url: string }> => {
+    const body = new FormData();
+    body.append('photo', file);
+
+    const response = await fetch(`/api/product-variants/${variantId}/photo`, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': getCsrfToken(),
+            'Accept': 'application/json',
+        },
+        credentials: 'same-origin',
+        body,
+    });
+
+    if (!response.ok) {
+        let message = `No se pudo subir la foto (HTTP ${response.status})`;
+        try {
+            const err = await response.json();
+            message = err.message || err.errors?.photo?.[0] || message;
+        } catch {
+            // respuesta no JSON
+        }
+        throw new Error(message);
+    }
+
+    return response.json();
 };
 
 const uploadVariantPhoto = async (variant: ProductVariant) => {
-    if (!variant.id || !variant.pendingFile) return;
+    if (!variant.id) {
+        alert('Guarda el producto primero (botón Guardar abajo) y luego sube la foto, o guarda con la foto ya seleccionada.');
+        return;
+    }
+    if (!variant.pendingFile) {
+        alert('Selecciona una imagen primero.');
+        return;
+    }
+
     variant.uploading = true;
     try {
-        const body = new FormData();
-        body.append('photo', variant.pendingFile);
-        const response = await fetch(`/api/product-variants/${variant.id}/photo`, {
-            method: 'POST',
-            headers: {
-                'X-CSRF-TOKEN': getCsrfToken(),
-                'Accept': 'application/json',
-            },
-            credentials: 'same-origin',
-            body,
-        });
-        if (!response.ok) throw new Error('No se pudo subir la foto');
-        const data = await response.json();
+        const data = await uploadVariantPhotoForId(variant.id, variant.pendingFile);
         variant.image_path = data.image_path;
         variant.public_image_url = data.public_url;
         variant.image_url = '';
         variant.pendingFile = null;
-    } catch (error) {
-        console.error(error);
-        alert('Error al subir foto del color');
+        alert('Foto guardada exitosamente');
+    } catch (error: any) {
+        console.error('Error al subir foto:', error);
+        alert(`Error al subir foto (${variant.color || 'variante'}): ${error.message}`);
     } finally {
         variant.uploading = false;
     }
+};
+
+const uploadPendingVariantPhotos = async (savedVariants: { id: number }[]) => {
+    const errors: string[] = [];
+
+    for (let i = 0; i < form.value.variants.length; i++) {
+        const pending = form.value.variants[i].pendingFile;
+        const saved = savedVariants[i];
+        if (!pending || !saved?.id) {
+            continue;
+        }
+
+        try {
+            const data = await uploadVariantPhotoForId(saved.id, pending);
+            form.value.variants[i].image_path = data.image_path;
+            form.value.variants[i].public_image_url = data.public_url;
+            form.value.variants[i].image_url = '';
+            form.value.variants[i].pendingFile = null;
+        } catch (error: any) {
+            errors.push(`${form.value.variants[i].color || `Variante ${i + 1}`}: ${error.message}`);
+        }
+    }
+
+    return errors;
 };
 
 const addVariant = () => {
@@ -201,6 +253,15 @@ const submit = async () => {
             const err = await response.json();
             throw new Error(err.message || 'Error al actualizar');
         }
+
+        const updated = await response.json();
+        const photoErrors = await uploadPendingVariantPhotos(updated.variants ?? []);
+
+        if (photoErrors.length > 0) {
+            alert(`Producto guardado, pero falló la subida de fotos:\n\n${photoErrors.join('\n')}`);
+            return;
+        }
+
         router.visit('/products');
     } catch (error: any) {
         console.error('Error updating product:', error);
@@ -372,14 +433,26 @@ onMounted(() => {
 
                             <div>
                                 <label class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Foto por color</label>
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    class="mt-1 block w-full text-sm text-gray-700 dark:text-gray-200"
-                                    @change="onVariantPhotoSelected(variant, $event)"
-                                />
-                                <p v-if="!variant.id" class="mt-1 text-xs text-amber-600">Guarda el producto primero para subir foto de esta variante.</p>
-                                <p v-if="variant.uploading" class="mt-1 text-xs text-gray-500">Subiendo foto...</p>
+                                <div class="mt-1 flex gap-2">
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        ref="fileInput"
+                                        class="block w-full text-sm text-gray-700 dark:text-gray-200"
+                                        @change="onVariantPhotoSelected(variant, $event)"
+                                    />
+                                    <button
+                                        type="button"
+                                        @click="uploadVariantPhoto(variant)"
+                                        :disabled="!variant.pendingFile || variant.uploading"
+                                        class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {{ variant.uploading ? 'Subiendo...' : 'Subir Foto' }}
+                                    </button>
+                                </div>
+                                <p class="mt-1 text-xs text-gray-500">Selecciona la foto y pulsa «Subir Foto», o guarda el producto y se subirá automáticamente.</p>
+                                <p v-if="!variant.id" class="mt-1 text-xs text-amber-600">Esta variante es nueva: al guardar el producto se creará y podrás subir la foto.</p>
+                                <p v-if="variant.pendingFile" class="mt-1 text-xs text-green-600">Archivo seleccionado: {{ variant.pendingFile.name }}</p>
                                 <img
                                     v-if="variantPreviewUrl(variant)"
                                     :src="variantPreviewUrl(variant)!"

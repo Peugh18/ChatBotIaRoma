@@ -52,7 +52,11 @@ class BusinessConfigService
 
     public function orderConfirmationPrompt(): string
     {
-        return '¿Deseas realizar el pedido hermosa? 💕';
+        $cta = trim($this->salesClosingCta());
+
+        return $cta !== ''
+            ? "¿Confirmamos tu pedido? {$cta} 💕"
+            : '¿Confirmamos tu pedido hermosa? 💕';
     }
 
     public function formatYapeNumber(): string

@@ -20,6 +20,7 @@ class BotSetting extends Model
         'model_vision',
         'reminder_3min_seconds',
         'reminder_15min_seconds',
+        'huggingface_token',
     ];
 
     protected $casts = [

@@ -18,7 +18,8 @@ class DeterministicBotService
         protected SalesFlowService $salesFlow,
         protected CatalogImageMatcherService $imageMatcher,
         protected ProductPresentationService $presentation,
-        protected CategoryBrowseService $categoryBrowse
+        protected CategoryBrowseService $categoryBrowse,
+        protected SalesNudgeService $salesNudge
     ) {}
 
     /**
@@ -64,6 +65,7 @@ class DeterministicBotService
         try {
             [$imageUrl, $hasInboundImage] = $this->resolveInboundImage($imageUrl, $metadata);
             $normalized = $this->translator->translate($message, $metadata);
+            $normalized = $this->normalizeColorSwitchMessage($state, $normalized);
 
             if ($hasInboundImage && $this->shouldTreatAsPaymentProof($state)) {
                 $stageResponse = $this->salesFlow->handleStage($state, 'comprobante de pago enviado', true, $imageUrl);
@@ -73,6 +75,14 @@ class DeterministicBotService
 
                     return $stageResponse;
                 }
+            }
+
+            $photoResponse = $this->resolveColorPhotoRequest($state, $normalized);
+            if ($photoResponse !== null) {
+                $this->metrics->incrementIntent('color_photo_request');
+                $this->metrics->resetFailureStreak($phoneNumber);
+
+                return $photoResponse;
             }
 
             $colorResponse = $this->presentation->handleColorSelection($state, $normalized);
@@ -89,6 +99,14 @@ class DeterministicBotService
                 $this->metrics->resetFailureStreak($phoneNumber);
 
                 return $sizeResponse;
+            }
+
+            $nudgeResponse = $this->salesNudge->tryRespond($state, $normalized, $hasInboundImage);
+            if ($nudgeResponse !== null) {
+                $this->metrics->incrementIntent('sales_nudge');
+                $this->metrics->resetFailureStreak($phoneNumber);
+
+                return $nudgeResponse;
             }
 
             $hasImage = $hasInboundImage;
@@ -155,6 +173,8 @@ class DeterministicBotService
                 'catalog_gate', 'catalog' => $this->handleCatalog($state, $normalized),
                 'live_image' => $this->handleLiveImage($state, $imageUrl, $normalized),
                 'buy_now' => $this->handleBuyNow($state),
+                'color_photo_request' => $this->resolveColorPhotoRequest($state, $normalized)
+                    ?? ['text' => $this->business->applyBrandCta('¿De qué color quieres ver la foto?'), 'metadata' => []],
                 default => $this->handleFallback($state, $normalized, $imageUrl),
             };
 
@@ -257,7 +277,144 @@ class DeterministicBotService
             return 'buy_now';
         }
 
+        if ($this->looksLikeColorPhotoRequest($msg)) {
+            return 'color_photo_request';
+        }
+
         return 'fallback';
+    }
+
+    protected function looksLikeColorPhotoRequest(string $message): bool
+    {
+        return (bool) preg_match(
+            '/\b(tienes|hay|tienen|muestrame|mu[eé]strame|ver|foto|imagen)\b.*\b(foto|imagen|color)\b/ui',
+            $message
+        ) || (bool) preg_match(
+            '/\b(foto|imagen)\s+(en|del|de)\b/ui',
+            $message
+        ) || (bool) preg_match(
+            '/\b(muestrame|mu[eé]strame|ver)\s+(?:en\s+)?(?:color\s+)?([a-záéíóúñ]+)\b/ui',
+            $message
+        ) || (bool) preg_match(
+            '/\b(muestrame|mu[eé]strame|ver)\s+(foto|imagen)\b/ui',
+            $message
+        );
+    }
+
+    /**
+     * Si el cliente pide ver otro color, convertir a pick_color para flujo completo (foto + tallas).
+     */
+    protected function normalizeColorSwitchMessage(ConversationState $state, string $message): string
+    {
+        $ctx = $state->context ?? [];
+        $salesStage = $ctx['sales_stage'] ?? null;
+
+        if (! in_array($salesStage, ['awaiting_color_selection', 'awaiting_size_selection'], true)) {
+            return $message;
+        }
+
+        $productId = (int) ($ctx['current_product_id'] ?? 0);
+        if ($productId <= 0) {
+            return $message;
+        }
+
+        if (preg_match('/^pick_color_' . $productId . '_/i', $message)) {
+            return $message;
+        }
+
+        $requestedColor = $this->extractColorFromPhotoRequest($message, $ctx);
+        if ($requestedColor === null || $requestedColor === '') {
+            return $message;
+        }
+
+        $currentColor = mb_strtolower(trim((string) ($ctx['current_color'] ?? '')));
+        $isPhotoRequest = $this->looksLikeColorPhotoRequest($message);
+        $isColorSwitch = $requestedColor !== $currentColor;
+        $isExplicitColorPhrase = (bool) preg_match(
+            '/\b(color|muestrame|mu[eé]strame|ver|foto|imagen|otro\s+color)\b/ui',
+            $message
+        );
+
+        if ($isPhotoRequest || $isColorSwitch || $isExplicitColorPhrase) {
+            return 'pick_color_' . $productId . '_' . rawurlencode($requestedColor);
+        }
+
+        return $message;
+    }
+
+    /**
+     * Responde a "tienes foto?" sin cambiar de color (solo reenvía la foto del color actual).
+     */
+    protected function resolveColorPhotoRequest(ConversationState $state, string $message): ?array
+    {
+        $ctx = $state->context ?? [];
+        $salesStage = $ctx['sales_stage'] ?? null;
+
+        if (! in_array($salesStage, ['awaiting_color_selection', 'awaiting_size_selection'], true)) {
+            return null;
+        }
+
+        if (! $this->looksLikeColorPhotoRequest($message)) {
+            return null;
+        }
+
+        $productId = (int) ($ctx['current_product_id'] ?? 0);
+        if ($productId <= 0) {
+            return null;
+        }
+
+        $color = mb_strtolower(trim((string) ($ctx['current_color'] ?? '')));
+        if ($color === '') {
+            return [
+                'text' => $this->business->applyBrandCta('¿De qué color quieres ver la foto? Dime el color 💕'),
+                'metadata' => [],
+            ];
+        }
+
+        // Si pidió otro color, normalizeColorSwitchMessage ya lo envió a handleColorSelection
+        $requestedColor = $this->extractColorFromPhotoRequest($message, $ctx);
+        if ($requestedColor !== null && $requestedColor !== $color) {
+            return null;
+        }
+
+        $this->metrics->incrementRoute('color_photo_request');
+
+        $imageResult = $this->tools->executeSendProductImage(
+            $state,
+            $productId,
+            $color,
+            "Color {$color} 📸"
+        );
+
+        if (! ($imageResult['success'] ?? false)) {
+            return [
+                'text' => $this->business->applyBrandCta("Lo siento, no tengo foto del color {$color}. ¿Quieres ver otro color o consultas con un asesor?"),
+                'metadata' => [],
+            ];
+        }
+
+        return [
+            'text' => $this->business->applyBrandCta("¡Aquí está la foto en {$color}! 📸"),
+            'metadata' => [],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $ctx
+     */
+    protected function extractColorFromPhotoRequest(string $message, array $ctx): ?string
+    {
+        $productId = (int) ($ctx['current_product_id'] ?? 0);
+        if ($productId > 0) {
+            $resolved = $this->presentation->resolveVariantColorFromMessage($productId, $message);
+            if ($resolved !== null && $resolved !== '') {
+                return mb_strtolower($resolved);
+            }
+        }
+
+        $current = mb_strtolower(trim((string) ($ctx['current_color'] ?? '')));
+
+        return $current !== '' ? $current : null;
     }
 
     protected function handleCatalog(ConversationState $state, string $message): array
@@ -464,7 +621,7 @@ class DeterministicBotService
                 'awaiting_color_selection',
                 'awaiting_size_selection',
             ], true)) {
-                return ['text' => $this->business->applyBrandCta('Elige una opción de la lista o escríbeme el número 💕'), 'metadata' => []];
+                return ['text' => $this->business->applyBrandCta(config('sales_copy.stuck_in_stage')), 'metadata' => []];
             }
 
             return $this->categoryBrowse->presentCategorySelection($state);

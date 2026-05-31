@@ -122,6 +122,98 @@ class ProcessIncomingMessageJob implements ShouldQueue
     }
 
     /**
+     * Envía la foto de producto en un mensaje aparte (más fiable que imagen + botones en uno).
+     */
+    protected function dispatchPendingProductImageIfNeeded(
+        ?ConversationState $conversationState,
+        ProductMediaService $media
+    ): void {
+        if (! $conversationState) {
+            return;
+        }
+
+        $ctx = $conversationState->context ?? [];
+        $queue = $ctx['pending_image_queue'] ?? [];
+
+        if (is_array($queue) && $queue !== []) {
+            foreach ($queue as $item) {
+                $this->dispatchOneProductImage(
+                    $conversationState,
+                    $media,
+                    (string) ($item['url'] ?? ''),
+                    (string) ($item['caption'] ?? '📸')
+                );
+            }
+            unset($ctx['pending_image_queue']);
+            $conversationState->context = $ctx;
+            $conversationState->save();
+            $conversationState->refresh();
+            $ctx = $conversationState->context ?? [];
+        }
+
+        if (empty($ctx['pending_image_url'])) {
+            return;
+        }
+
+        $pendingImage = $media->resolveWhatsappSendUrl((string) $ctx['pending_image_url']);
+        $caption = (string) ($ctx['pending_image_caption'] ?? '📸');
+        $this->dispatchOneProductImage($conversationState, $media, $pendingImage, $caption);
+
+        unset($ctx['pending_image_url'], $ctx['pending_image_caption']);
+        $conversationState->context = $ctx;
+        $conversationState->save();
+    }
+
+    protected function dispatchOneProductImage(
+        ConversationState $conversationState,
+        ProductMediaService $media,
+        string $imageUrl,
+        string $caption
+    ): void {
+        if ($imageUrl === '') {
+            return;
+        }
+
+        $pendingImage = $media->resolveWhatsappSendUrl($imageUrl);
+
+        if (! $media->isUrlReachableByMeta($pendingImage)) {
+            Log::warning('ProcessIncomingMessageJob: product image skipped (no public HTTPS URL)', [
+                'phone' => $this->message->phone_number,
+                'url' => $pendingImage,
+                'hint' => 'Configura PUBLIC_APP_URL con tu ngrok HTTPS (puerto 8000)',
+            ]);
+
+            return;
+        }
+
+        $imageMessage = Message::create([
+            'message_id' => 'temp_'.uniqid(),
+            'phone_number' => $this->message->phone_number,
+            'customer_id' => $this->message->customer_id,
+            'conversation_state_id' => $this->message->conversation_state_id,
+            'customer_name' => $this->message->customer_name,
+            'content' => $caption,
+            'direction' => 'outgoing',
+            'status' => 'pending',
+            'whatsapp_timestamp' => now(),
+            'metadata' => [
+                'type' => 'image',
+                'image_url' => $pendingImage,
+            ],
+        ]);
+
+        if (env('BROADCAST_CONNECTION') === 'pusher' && env('PUSHER_APP_ID')) {
+            try {
+                broadcast(new MessageReceived($imageMessage))->toOthers();
+            } catch (\Exception $e) {
+                Log::error('ProcessIncomingMessageJob: Error broadcasting image reply: '.$e->getMessage());
+            }
+        }
+
+        SendWhatsappMessageJob::dispatch($imageMessage);
+    }
+
+    /**
      * M2: Detecta si el mensaje es un saludo simple para responder con plantilla
      * sin llamar al LLM (ahorra ~80% tokens en saludos).
      */
@@ -305,32 +397,17 @@ class ProcessIncomingMessageJob implements ShouldQueue
                     broadcast(new HumanEscalation($this->message))->toOthers();
                 }
 
-                // B3: Extraer imagen pendiente del contexto si existe
+                // B3: Imagen de producto — enviar en mensaje separado (WhatsApp no muestra bien imagen + botones juntos)
                 $conversationState = ConversationState::where('phone_number', $this->message->phone_number)->first();
-                if ($conversationState && isset($conversationState->context['pending_image_url'])) {
-                    $pendingImage = $media->resolveWhatsappSendUrl((string) $conversationState->context['pending_image_url']);
-                    if ($media->isUrlReachableByMeta($pendingImage)) {
-                        $metadata['image_url'] = $pendingImage;
-                    } else {
-                        Log::warning('ProcessIncomingMessageJob: product image skipped (no public HTTPS URL)', [
-                            'phone' => $this->message->phone_number,
-                            'url' => $pendingImage,
-                        ]);
-                    }
-
-                    $stateContext = $conversationState->context;
-                    unset($stateContext['pending_image_url']);
-                    $conversationState->context = $stateContext;
-                    $conversationState->save();
-                }
+                $this->dispatchPendingProductImageIfNeeded($conversationState, $media);
 
                 // Extraer interactivos pendientes del contexto si existen
+                $conversationState = ConversationState::where('phone_number', $this->message->phone_number)->first();
                 if ($conversationState && isset($conversationState->context['pending_interactive'])) {
                     $pendingInteractive = $conversationState->context['pending_interactive'];
                     $metadata['type'] = 'interactive';
                     $metadata['interactive'] = $pendingInteractive['interactive'];
 
-                    // Limpiar el interactivo pendiente del contexto
                     $stateContext = $conversationState->context;
                     unset($stateContext['pending_interactive']);
                     $conversationState->context = $stateContext;

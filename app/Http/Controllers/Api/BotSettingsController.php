@@ -39,6 +39,7 @@ class BotSettingsController extends Controller
             'escalation_message' => 'nullable|string',
             'auto_reply_enabled' => 'nullable|boolean',
             'groq_api_key' => 'nullable|string',
+            'huggingface_token' => 'nullable|string',
             'model_chat' => 'nullable|string',
             'model_vision' => 'nullable|string',
             'reminder_3min_seconds' => 'nullable|integer',
@@ -47,6 +48,10 @@ class BotSettingsController extends Controller
 
         if (isset($validated['groq_api_key']) && $this->isMaskedKey($validated['groq_api_key'])) {
             unset($validated['groq_api_key']);
+        }
+
+        if (isset($validated['huggingface_token']) && $this->isMaskedKey($validated['huggingface_token'])) {
+            unset($validated['huggingface_token']);
         }
 
         $settings->update($validated);
@@ -63,6 +68,10 @@ class BotSettingsController extends Controller
 
         if (! empty($data['groq_api_key'])) {
             $data['groq_api_key'] = $this->maskKey((string) $data['groq_api_key']);
+        }
+
+        if (! empty($data['huggingface_token'])) {
+            $data['huggingface_token'] = $this->maskKey((string) $data['huggingface_token']);
         }
 
         return $data;

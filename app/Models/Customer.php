@@ -18,6 +18,7 @@ class Customer extends Model
         'last_seen_at',
         'tags',
         'notes',
+        'alternate_phone',
     ];
 
     protected $casts = [

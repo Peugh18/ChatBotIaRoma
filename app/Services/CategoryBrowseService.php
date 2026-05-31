@@ -17,6 +17,7 @@ class CategoryBrowseService
         protected BusinessConfigService $business,
         protected ProductPresentationService $presentation,
         protected ProductMediaService $media,
+        protected CatalogMatchPresenterService $matchPresenter,
     ) {}
 
     /**
@@ -371,6 +372,13 @@ class CategoryBrowseService
             return $this->presentation->presentProductPick($state, (int) $searchResult['products'][0]['id']);
         }
 
+        if ($count >= 2 && $count <= 3) {
+            return $this->matchPresenter->presentProductOptions(
+                $state,
+                array_slice($searchResult['products'] ?? [], 0, 3)
+            );
+        }
+
         $ctx = $state->context ?? [];
         $ctx['sales_stage'] = 'awaiting_product_selection';
         $ctx['last_shown_products'] = array_map(fn ($p) => [
@@ -460,16 +468,6 @@ class CategoryBrowseService
                 [['title' => $copy['section_title'] ?? 'Vestidos', 'rows' => array_slice($productRows, 0, 10)]],
                 'Toca para ver colores'
             );
-        }
-
-        $first = $products->first();
-        if ($first) {
-            $first->loadMissing('variants');
-            $variant = $first->variants->first();
-            $previewUrl = $variant ? $this->media->resolvePublicUrl($variant) : null;
-            if ($previewUrl && $this->media->isUrlReachableByMeta($previewUrl)) {
-                $this->tools->executeSendProductImage($state, $first->id, null);
-            }
         }
 
         return ['text' => $this->business->applyBrandCta($text), 'metadata' => []];
