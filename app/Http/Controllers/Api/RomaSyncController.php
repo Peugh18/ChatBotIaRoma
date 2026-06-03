@@ -14,11 +14,11 @@ use App\Models\DeliveryZone;
 use App\Models\Message;
 use App\Models\Order;
 use App\Models\Product;
-use App\Services\ProductMediaService;
-use App\Services\SalesFlowService;
-use App\Support\RomaWebhookAuth;
-use App\Support\SafeLog;
-use App\Support\WhatsappMessageContract;
+use App\Services\ServicioMediaProducto;
+use App\Support\EtapaVenta;
+use App\Support\AutenticacionWebhookRoma;
+use App\Support\RegistroSeguro;
+use App\Support\ContratoMensajeWhatsapp;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -26,7 +26,7 @@ class RomaSyncController extends Controller
 {
     public function sync(Request $request): JsonResponse
     {
-        if (! RomaWebhookAuth::verify($request)) {
+        if (! AutenticacionWebhookRoma::verify($request)) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
@@ -63,7 +63,7 @@ class RomaSyncController extends Controller
 
     public function receiveMessage(Request $request): JsonResponse
     {
-        if (! RomaWebhookAuth::verify($request)) {
+        if (! AutenticacionWebhookRoma::verify($request)) {
             \Log::warning('Roma messages: auth failed', [
                 'ip' => $request->ip(),
                 'has_signature' => $request->hasHeader('X-Roma-Signature'),
@@ -73,10 +73,10 @@ class RomaSyncController extends Controller
         }
 
         $payload = $request->all();
-        \Log::info('Roma messages payload recibido', SafeLog::redactPayload($payload));
+        \Log::info('Roma messages payload recibido', RegistroSeguro::redactPayload($payload));
 
         $messageType = $payload['message_type'] ?? 'text';
-        $contentPreview = WhatsappMessageContract::inboundContent($payload);
+        $contentPreview = ContratoMensajeWhatsapp::inboundContent($payload);
 
         // Contenido real del cliente (texto, imagen, botón) — no confundir con receipts de estado.
         $directionRaw = $payload['direction'] ?? 'incoming';
@@ -158,7 +158,7 @@ class RomaSyncController extends Controller
         $phoneNumber = $payload['from'] ?? $payload['phone_number'] ?? $payload['sender_phone'] ?? null;
         $content = $contentPreview;
 
-        $metadata = WhatsappMessageContract::inboundMetadata($payload);
+        $metadata = ContratoMensajeWhatsapp::inboundMetadata($payload);
 
         // Buscar URL de imagen en el payload normalizado o en el bloque crudo
         $imageUrl = $payload['image_url'] ?? $payload['media_url'] ?? null;
@@ -172,6 +172,21 @@ class RomaSyncController extends Controller
                 ?? null;
         }
         if ($imageUrl) {
+            if (str_contains((string) $imageUrl, 'lookaside.fbsbx.com')) {
+                $resolved = app(\App\Services\ServicioDescargaImagenWhatsapp::class)
+                    ->resolverDesdePayloadInbound(array_merge($payload, ['image_url' => $imageUrl]));
+                if ($resolved) {
+                    $imageUrl = $resolved;
+                    \Log::info('RomaSyncController: imagen lookaside resuelta en CRM', [
+                        'phone' => $phoneNumber,
+                    ]);
+                } else {
+                    \Log::warning('RomaSyncController: imagen entrante sigue en lookaside', [
+                        'phone' => $phoneNumber,
+                        'hint' => 'WA_TOKEN en CRM (.env, mismo token Meta) o en otra PC: código roma-api + ROMA_API_PUBLIC_URL + reiniciar dev',
+                    ]);
+                }
+            }
             $metadata['image_url'] = $imageUrl;
         }
 
@@ -292,7 +307,7 @@ class RomaSyncController extends Controller
             return response()->json(['message' => 'Se requiere texto o imagen'], 422);
         }
 
-        $media = app(ProductMediaService::class);
+        $media = app(ServicioMediaProducto::class);
         if (! empty($validated['image_url'])) {
             $validated['image_url'] = $media->resolveWhatsappSendUrl($validated['image_url']);
             if (! $media->isUrlReachableByMeta($validated['image_url'])) {
@@ -473,25 +488,28 @@ class RomaSyncController extends Controller
     {
         $state = ConversationState::where('phone_number', $phone)->first();
 
+        $modoPedido = $state ? app(\App\Services\ServicioModoConversacionPedido::class) : null;
+
         return response()->json([
             'mode' => ($state && $state->requires_human) ? 'human' : 'bot',
             'is_auto_escalated' => $state ? (bool) $state->is_auto_escalated : false,
+            'asesor_post_pedido' => $state && $modoPedido ? $modoPedido->tieneAsesorPostPedido($state) : false,
         ]);
     }
 
-    public function validatePayment(string $phone, SalesFlowService $salesFlow): JsonResponse
+    public function validatePayment(string $phone): JsonResponse
     {
         $state = ConversationState::where('phone_number', $phone)->first();
         if (! $state) {
             return response()->json(['message' => 'Conversación no encontrada'], 404);
         }
 
-        $ctx = $state->context ?? [];
-        if (($ctx['sales_stage'] ?? null) !== 'awaiting_payment_validation') {
+        if (! EtapaVenta::esValidacionPago($state)) {
             return response()->json(['message' => 'No hay un pago pendiente de validación en esta conversación'], 422);
         }
 
-        $orderId = (int) ($ctx['last_order_id'] ?? 0);
+        $ctx = $state->context ?? [];
+        $orderId = (int) ($ctx['ultimo_pedido_id'] ?? $ctx['last_order_id'] ?? 0);
         if ($orderId > 0) {
             $order = Order::find($orderId);
             if ($order) {
@@ -502,23 +520,35 @@ class RomaSyncController extends Controller
             }
         }
 
-        $state->update([
-            'requires_human' => false,
-            'is_auto_escalated' => false,
-            'last_human_activity_at' => null,
-        ]);
-
+        app(\App\Ventas\MaquinaEstados\MaquinaEstadosVentas::class)->finalizarValidacionPago($state->fresh());
         $state->refresh();
-        $resumeText = $salesFlow->resumeBotAfterPaymentValidation($state);
-        if (! $resumeText) {
-            return response()->json(['message' => 'No se pudo reanudar el flujo del bot. Verifica el pedido en el pipeline.'], 422);
+
+        $resumeText = (string) config(
+            'flujo_ventas.mensaje_pago_aprobado',
+            'Tu pedido ha sido confirmado exitosamente 💖 Muy pronto estaremos coordinando la entrega de tu compra.'
+        );
+        if ($orderId > 0) {
+            $pedidoMsg = str_replace(
+                '{pedido}',
+                (string) $orderId,
+                (string) config('copy_ventas.pedido_confirmado', $resumeText)
+            );
+            if ($pedidoMsg !== '') {
+                $resumeText = $pedidoMsg;
+            }
         }
 
         $this->sendAutomatedBotReply($state, $resumeText);
 
+        app(\App\Services\ServicioModoConversacionPedido::class)
+            ->activarHumanoTrasConfirmacion($state->fresh(), $orderId > 0 ? $orderId : null);
+
         return response()->json([
-            'message' => 'Pago validado. El bot continuó con el pedido.',
-            'mode' => 'bot',
+            'message' => 'Pago validado. Confirma al cliente y continúa en modo humano.',
+            'mode' => 'human',
+            'requires_human' => true,
+            'is_auto_escalated' => false,
+            'asesor_post_pedido' => true,
             'order_id' => $orderId > 0 ? $orderId : null,
             'bot_reply_preview' => mb_substr($resumeText, 0, 120),
         ]);
@@ -536,19 +566,36 @@ class RomaSyncController extends Controller
         $state = ConversationState::where('phone_number', $phone)->first();
         $paymentValidationResumed = false;
         if ($state) {
+            $ctx = $state->context ?? [];
+            if (! $requiresHuman) {
+                unset(
+                    $ctx[\App\Services\ServicioModoConversacionPedido::CTX_ASESOR_POST_PEDIDO],
+                    $ctx['asesor_post_pedido_order_id'],
+                );
+            }
+
             $state->update([
+                'context' => $ctx,
                 'requires_human' => $requiresHuman,
                 'is_auto_escalated' => false,
                 'last_human_activity_at' => $requiresHuman ? now() : null,
             ]);
 
             if (! $requiresHuman) {
-                $resumeText = app(SalesFlowService::class)->resumeBotAfterPaymentValidation($state);
-                if ($resumeText) {
-                    $this->sendAutomatedBotReply($state, $resumeText);
-                    $paymentValidationResumed = true;
-                }
                 $this->requeueUnprocessedIncomingMessages($phone);
+            }
+
+            if (env('BROADCAST_CONNECTION') === 'pusher' && env('PUSHER_APP_ID')) {
+                try {
+                    broadcast(new \App\Events\ConversationModeChanged(
+                        $phone,
+                        $mode,
+                        false,
+                        ! $requiresHuman ? false : app(\App\Services\ServicioModoConversacionPedido::class)->tieneAsesorPostPedido($state->fresh()),
+                    ))->toOthers();
+                } catch (\Exception $e) {
+                    \Log::error('setMode broadcast: '.$e->getMessage());
+                }
             }
         }
 

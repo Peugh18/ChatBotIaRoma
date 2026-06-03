@@ -11,6 +11,15 @@ export interface RecentOrder {
     customer: { name: string | null; phone_number: string } | null;
 }
 
+export interface PaymentValidationItem {
+    phone_number: string;
+    customer_name: string | null;
+    order_id: number | null;
+    order_total: number | null;
+    payment_proof_url: string | null;
+    waiting_since: string | null;
+}
+
 export interface DashboardStats {
     total_sales: number;
     average_ticket: number;
@@ -18,6 +27,8 @@ export interface DashboardStats {
     total_customers: number;
     conversion_rate: number;
     recent_orders: RecentOrder[];
+    payment_validation_count: number;
+    payment_validation_queue: PaymentValidationItem[];
 }
 
 const emptyStats = (): DashboardStats => ({
@@ -27,6 +38,8 @@ const emptyStats = (): DashboardStats => ({
     total_customers: 0,
     conversion_rate: 0,
     recent_orders: [],
+    payment_validation_count: 0,
+    payment_validation_queue: [],
 });
 
 export function useDashboardStats() {

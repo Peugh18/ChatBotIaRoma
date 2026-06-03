@@ -4,39 +4,23 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\IndexVariantEmbeddingJob;
-use App\Models\BotSetting;
 use App\Models\ProductVariant;
-use App\Services\ImageEmbeddingService;
+use App\Services\ServicioEmbeddingImagen;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Controller para testing y diagnóstico del reconocimiento visual CLIP.
+ * Controller para testing y diagnóstico del reconocimiento visual Voyage.
  */
 class CatalogVisionController extends Controller
 {
     public function __construct(
-        private ImageEmbeddingService $embeddingService
+        private ServicioEmbeddingImagen $embeddingService
     ) {
     }
 
-    /**
-     * Testea que Hugging Face API esté configurada y respondiendo.
-     *
-     * POST /api/test-embedding
-     *
-     * Body: { "image_url": "https://example.com/image.jpg" }
-     *
-     * Response:
-     * {
-     *   "success": true,
-     *   "dimension": 768,
-     *   "sample": [0.1, 0.2, ...],
-     *   "model": "openai/clip-vit-large-patch14"
-     * }
-     */
     public function testEmbedding(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -47,21 +31,17 @@ class CatalogVisionController extends Controller
 
         Log::info('CatalogVisionController: Testing embedding', [
             'image_url' => $imageUrl,
-            'model' => config('catalog-vision.clip_model'),
+            'model' => config('catalog-vision.voyage_model'),
         ]);
 
-        $embedding = $this->embeddingService->getEmbedding($imageUrl);
+        $embedding = $this->embeddingService->getEmbedding($imageUrl, 'query');
 
         if ($embedding === null) {
-            Log::warning('CatalogVisionController: Embedding generation failed', [
-                'image_url' => $imageUrl,
-            ]);
-
             return response()->json([
                 'success' => false,
-                'message' => 'No se pudo generar el embedding. Verifica que HUGGINGFACE_TOKEN esté configurado en .env o en bot-settings.',
-                'token_configured' => config('catalog-vision.huggingface_token') !== null,
-                'model' => config('catalog-vision.clip_model'),
+                'message' => 'No se pudo generar el embedding. Verifica VOYAGE_API_KEY en .env o en bot-settings.',
+                'token_configured' => $this->embeddingService->isConfigured(),
+                'model' => config('catalog-vision.voyage_model'),
             ], 400);
         }
 
@@ -69,25 +49,12 @@ class CatalogVisionController extends Controller
             'success' => true,
             'dimension' => count($embedding),
             'sample' => array_slice($embedding, 0, 5),
-            'model' => config('catalog-vision.clip_model'),
+            'model' => config('catalog-vision.voyage_model'),
             'min_similarity' => config('catalog-vision.min_similarity'),
             'top_k' => config('catalog-vision.top_k'),
         ]);
     }
 
-    /**
-     * Obtiene estadísticas del catálogo visual.
-     *
-     * GET /api/catalog-vision/stats
-     *
-     * Response:
-     * {
-     *   "total_variants": 50,
-     *   "indexed_variants": 42,
-     *   "indexed_percentage": 84,
-     *   "model": "openai/clip-vit-large-patch14"
-     * }
-     */
     public function stats(): JsonResponse
     {
         $total = ProductVariant::query()
@@ -102,11 +69,7 @@ class CatalogVisionController extends Controller
             ->count();
 
         $pending = max(0, $total - $indexed);
-        $settings = BotSetting::first();
-        $tokenConfigured = (bool) (
-            config('catalog-vision.huggingface_token')
-            ?: $settings?->huggingface_token
-        );
+        $tokenConfigured = $this->embeddingService->isConfigured();
 
         $lastIndexed = ProductVariant::query()
             ->whereNotNull('embedding_indexed_at')
@@ -117,21 +80,20 @@ class CatalogVisionController extends Controller
             'indexed_variants' => $indexed,
             'pending_variants' => $pending,
             'indexed_percentage' => $total > 0 ? round(($indexed / $total) * 100, 2) : 0,
-            'model' => config('catalog-vision.clip_model'),
+            'model' => config('catalog-vision.voyage_model'),
             'min_similarity' => config('catalog-vision.min_similarity'),
             'top_k' => config('catalog-vision.top_k'),
             'vision_enabled' => (bool) config('catalog-vision.enabled'),
             'token_configured' => $tokenConfigured,
+            'wa_token_configured' => app(\App\Services\ServicioDescargaImagenWhatsapp::class)->tokenConfigurado(),
             'public_url_configured' => (bool) config('app.public_url'),
             'last_indexed_at' => $lastIndexed,
+            'indexing_note' => $tokenConfigured
+                ? null
+                : 'Configura tu API Key de Voyage en .env (VOYAGE_API_KEY) o en bot-settings para indexar el catálogo.',
         ]);
     }
 
-    /**
-     * Encola indexación CLIP de variantes con foto.
-     *
-     * POST /api/catalog-vision/reindex?force=1
-     */
     public function reindex(Request $request): JsonResponse
     {
         $force = $request->boolean('force');

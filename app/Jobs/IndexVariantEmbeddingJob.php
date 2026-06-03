@@ -3,8 +3,8 @@
 namespace App\Jobs;
 
 use App\Models\ProductVariant;
-use App\Services\ImageEmbeddingService;
-use App\Services\ProductMediaService;
+use App\Services\ServicioEmbeddingImagen;
+use App\Services\ServicioMediaProducto;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Cache;
@@ -19,7 +19,7 @@ class IndexVariantEmbeddingJob implements ShouldQueue
     ) {
     }
 
-    public function handle(ImageEmbeddingService $embeddingService, ProductMediaService $media): void
+    public function handle(ServicioEmbeddingImagen $embeddingService, ServicioMediaProducto $media): void
     {
         try {
             $variant = ProductVariant::find($this->variantId);
@@ -32,19 +32,22 @@ class IndexVariantEmbeddingJob implements ShouldQueue
                 return;
             }
 
-            $imageSource = $media->resolvePublicUrl($variant)
-                ?? $variant->image_url
-                ?? $variant->image_path;
+            $imageSource = $media->resolveEmbeddingSource($variant);
 
             if (! $imageSource) {
                 Log::warning('IndexVariantEmbeddingJob: No image source found', [
                     'variant_id' => $this->variantId,
+                    'image_path' => $variant->image_path,
+                    'file_exists' => $variant->image_path
+                        ? \Illuminate\Support\Facades\Storage::disk('public')->exists($variant->image_path)
+                        : false,
                 ]);
+
                 return;
             }
 
-            // Get embedding from Hugging Face
-            $embedding = $embeddingService->getEmbedding($imageSource);
+            // Get embedding from Voyage
+            $embedding = $embeddingService->getEmbedding($imageSource, 'document');
 
             if (!$embedding) {
                 Log::warning('IndexVariantEmbeddingJob: Failed to get embedding', [
@@ -58,7 +61,7 @@ class IndexVariantEmbeddingJob implements ShouldQueue
             $variant->update([
                 'embedding' => $embedding,
                 'embedding_indexed_at' => now(),
-                'embedding_model' => config('catalog-vision.clip_model'),
+                'embedding_model' => config('catalog-vision.voyage_model'),
             ]);
 
             Cache::forget('catalog:indexed-variants');
@@ -67,7 +70,7 @@ class IndexVariantEmbeddingJob implements ShouldQueue
                 'variant_id' => $this->variantId,
                 'product_id' => $variant->product_id,
                 'embedding_dimension' => count($embedding),
-                'model' => config('catalog-vision.clip_model'),
+                'model' => config('catalog-vision.voyage_model'),
             ]);
         } catch (\Exception $e) {
             Log::error('IndexVariantEmbeddingJob: Error indexing variant', [

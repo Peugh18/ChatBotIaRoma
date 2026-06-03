@@ -2,7 +2,7 @@
 
 namespace App\Infrastructure\Whatsapp;
 
-use App\Support\WhatsappMessageContract;
+use App\Support\ContratoMensajeWhatsapp;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -23,7 +23,7 @@ class RomaWhatsappClient
     public function sendMessage(string $phone, string $body, string $waId, ?string $imageUrl = null, ?array $metadata = null): array
     {
         $romaUrl = rtrim($this->url, '/') . '/api/messages';
-        $payload = WhatsappMessageContract::buildOutbound($phone, $body, $waId, $imageUrl, $metadata);
+        $payload = ContratoMensajeWhatsapp::buildOutbound($phone, $body, $waId, $imageUrl, $metadata);
 
         Log::info('RomaWhatsappClient: Sending message', [
             'phone' => $phone,

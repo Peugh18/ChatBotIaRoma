@@ -1,5 +1,5 @@
 import { computed, nextTick, ref, type Ref } from 'vue';
-import type { ChatConversation, ChatFilterType, ChatMessage } from '@/types/chat';
+import type { ChatConversation, ChatFilterType, ChatInboxTab, ChatMessage } from '@/types/chat';
 
 export function useChatMessages(messagesContainer: Ref<HTMLElement | null>) {
     const messages = ref<ChatMessage[]>([]);
@@ -8,6 +8,7 @@ export function useChatMessages(messagesContainer: Ref<HTMLElement | null>) {
     const retryingMessageIds = ref<number[]>([]);
     const newMessage = ref('');
     const filterType = ref<ChatFilterType>('all');
+    const inboxTab = ref<ChatInboxTab>('active');
 
     const scrollToBottom = () => {
         nextTick(() => {
@@ -72,12 +73,13 @@ export function useChatMessages(messagesContainer: Ref<HTMLElement | null>) {
         }
     };
 
-    const conversations = computed((): ChatConversation[] => {
+    const allConversations = computed((): ChatConversation[] => {
         const map = new Map<string, ChatConversation>();
 
         for (const msg of messages.value) {
             const existing = map.get(msg.phone_number);
             if (!existing || new Date(msg.created_at) > new Date(existing.lastTime)) {
+                const postPedido = Boolean(msg.conversation_state?.asesor_post_pedido);
                 map.set(msg.phone_number, {
                     phone: msg.phone_number,
                     name: msg.customer?.name || msg.customer_name,
@@ -85,21 +87,40 @@ export function useChatMessages(messagesContainer: Ref<HTMLElement | null>) {
                     lastTime: msg.created_at,
                     count: messages.value.filter((m) => m.phone_number === msg.phone_number).length,
                     requires_human: msg.conversation_state?.requires_human ?? false,
-                    is_auto_escalated: msg.conversation_state?.is_auto_escalated ?? false,
+                    is_auto_escalated: postPedido
+                        ? false
+                        : (msg.conversation_state?.is_auto_escalated ?? false),
+                    asesor_post_pedido: postPedido,
                     customer_id: msg.customer_id,
                 });
             }
         }
 
-        let list = Array.from(map.values());
+        return Array.from(map.values()).sort(
+            (a, b) => new Date(b.lastTime).getTime() - new Date(a.lastTime).getTime(),
+        );
+    });
+
+    const shippingInboxCount = computed(
+        () => allConversations.value.filter((c) => c.asesor_post_pedido).length,
+    );
+
+    const conversations = computed((): ChatConversation[] => {
+        let list = allConversations.value.filter((c) =>
+            inboxTab.value === 'shipping' ? c.asesor_post_pedido : !c.asesor_post_pedido,
+        );
 
         if (filterType.value === 'human') {
-            list = list.filter((c) => c.requires_human);
+            list = list.filter((c) =>
+                inboxTab.value === 'shipping'
+                    ? c.asesor_post_pedido
+                    : c.requires_human && !c.asesor_post_pedido,
+            );
         } else if (filterType.value === 'ai') {
-            list = list.filter((c) => !c.requires_human);
+            list = list.filter((c) => !c.requires_human && !c.asesor_post_pedido);
         }
 
-        return list.sort((a, b) => new Date(b.lastTime).getTime() - new Date(a.lastTime).getTime());
+        return list;
     });
 
     const pushMessage = (message: ChatMessage) => {
@@ -128,6 +149,9 @@ export function useChatMessages(messagesContainer: Ref<HTMLElement | null>) {
         retryingMessageIds,
         newMessage,
         filterType,
+        inboxTab,
+        allConversations,
+        shippingInboxCount,
         conversations,
         fetchMessages,
         scrollToBottom,

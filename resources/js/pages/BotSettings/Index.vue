@@ -109,6 +109,28 @@ const showAdvanced = ref(false);
 
                 <Card>
                     <CardHeader>
+                        <CardTitle>Presentación Leidi (sí se usa)</CardTitle>
+                        <CardDescription>
+                            Saludo inicial del bot de ventas cuando la clienta escribe por primera vez o vuelve sin nombre guardado.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent class="space-y-2">
+                        <Label for="mensaje-presentacion">Mensaje de presentación</Label>
+                        <textarea
+                            id="mensaje-presentacion"
+                            v-model="settings.mensaje_presentacion"
+                            rows="4"
+                            class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            placeholder="Hola linda, soy Leidi, tu asistente de Roma 💖"
+                        />
+                        <p class="text-xs text-muted-foreground">
+                            Si la clienta ya tiene nombre en el CRM, el bot usa el saludo de regreso automático.
+                        </p>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
                         <CardTitle>Textos de apoyo (sí se usan)</CardTitle>
                         <CardDescription>Mensajes cuando escala a humano o recordatorios automáticos</CardDescription>
                     </CardHeader>
@@ -140,9 +162,6 @@ const showAdvanced = ref(false);
                                 class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                             />
                         </div>
-                        <p class="rounded-md border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-gray-600 dark:bg-gray-900/30 dark:text-gray-400">
-                            <strong>Saludo inicial:</strong> lo define el código (menú de opciones al decir «hola»), no un campo de esta pantalla.
-                        </p>
                     </CardContent>
                 </Card>
 
@@ -170,8 +189,8 @@ const showAdvanced = ref(false);
                             Visión del catálogo (lives / fotos)
                         </CardTitle>
                         <CardDescription>
-                            Reconocimiento por CLIP cuando el cliente envía foto en WhatsApp. Requiere fotos en variantes,
-                            token Hugging Face y cola activa.
+                            Reconocimiento visual con Voyage cuando el cliente envía foto en WhatsApp. Requiere fotos en variantes,
+                            API Key Voyage y cola activa.
                         </CardDescription>
                     </CardHeader>
                     <CardContent class="space-y-4">
@@ -183,7 +202,7 @@ const showAdvanced = ref(false);
                                     <p class="text-lg font-semibold">{{ visionStats.total_variants_with_photo }}</p>
                                 </div>
                                 <div class="rounded-lg border bg-muted/30 px-3 py-2">
-                                    <p class="text-xs text-muted-foreground">Indexadas CLIP</p>
+                                    <p class="text-xs text-muted-foreground">Indexadas Voyage</p>
                                     <p class="text-lg font-semibold text-green-600 dark:text-green-400">
                                         {{ visionStats.indexed_variants }}
                                         <span class="text-sm font-normal text-muted-foreground">
@@ -203,7 +222,7 @@ const showAdvanced = ref(false);
                             </div>
                             <ul class="space-y-1 text-xs text-muted-foreground">
                                 <li>
-                                    Token HF:
+                                    Token Voyage:
                                     <strong>{{ visionStats.token_configured ? 'Configurado' : 'Falta' }}</strong>
                                 </li>
                                 <li>
@@ -215,6 +234,12 @@ const showAdvanced = ref(false);
                                     Última indexación: {{ visionStats.last_indexed_at }}
                                 </li>
                             </ul>
+                            <p
+                                v-if="visionStats.indexing_note"
+                                class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+                            >
+                                {{ visionStats.indexing_note }}
+                            </p>
                             <div class="flex flex-wrap gap-2">
                                 <Button type="button" variant="outline" size="sm" :disabled="reindexing" @click="reindex(false)">
                                     <RefreshCw class="mr-2 h-4 w-4" :class="{ 'animate-spin': reindexing }" />
@@ -259,9 +284,9 @@ const showAdvanced = ref(false);
                             <Input id="groq-key" v-model="settings.groq_api_key" type="password" placeholder="gsk_..." />
                         </div>
                         <div class="space-y-2">
-                            <Label for="hf-key">API Key Hugging Face</Label>
-                            <Input id="hf-key" v-model="settings.huggingface_token" type="password" placeholder="hf_..." />
-                            <p class="text-xs text-muted-foreground">Opcional. Para reconocimiento visual de catálogo (CLIP).</p>
+                            <Label for="voyage-key">API Key Voyage</Label>
+                            <Input id="voyage-key" v-model="settings.voyage_api_key" type="password" placeholder="pa-..." />
+                            <p class="text-xs text-muted-foreground">Para reconocimiento visual del catálogo (voyage-multimodal-3.5).</p>
                         </div>
                         <div class="grid gap-4 sm:grid-cols-2">
                             <div class="space-y-2">

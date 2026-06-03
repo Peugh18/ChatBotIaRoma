@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\Product;
-use App\Services\PriceValidatorService;
+use App\Services\ServicioValidacionPrecios;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -19,7 +19,7 @@ class HealthCheckController extends Controller
     public function dashboard(): JsonResponse
     {
         // Auditoría de precios
-        $priceAudit = PriceValidatorService::auditAllProducts();
+        $priceAudit = ServicioValidacionPrecios::auditAllProducts();
 
         // Métricas de órdenes
         $zeroAmountOrders = Order::where('amount_total', '<=', 0)
@@ -69,7 +69,7 @@ class HealthCheckController extends Controller
      */
     public function ping(): JsonResponse
     {
-        $audit = PriceValidatorService::auditAllProducts();
+        $audit = ServicioValidacionPrecios::auditAllProducts();
 
         return response()->json([
             'status' => $audit['healthy'] ? 'ok' : 'degraded',

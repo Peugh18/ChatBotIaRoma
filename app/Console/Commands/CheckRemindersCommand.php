@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\AgentService;
+use App\Services\ServicioRecordatorios;
 use Illuminate\Console\Command;
 
 class CheckRemindersCommand extends Command
@@ -13,7 +13,7 @@ class CheckRemindersCommand extends Command
 
     public function handle()
     {
-        $agentService = app(AgentService::class);
+        $agentService = app(ServicioRecordatorios::class);
         $reminders = $agentService->checkReminders();
 
         $this->info("Sent " . count($reminders) . " reminders");

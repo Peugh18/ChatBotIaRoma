@@ -4,7 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Message;
 use App\Infrastructure\Whatsapp\RomaWhatsappClient;
-use App\Services\ProductMediaService;
+use App\Services\ServicioMediaProducto;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -40,7 +40,7 @@ class SendWhatsappMessageJob implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(RomaWhatsappClient $client, ProductMediaService $media): void
+    public function handle(RomaWhatsappClient $client, ServicioMediaProducto $media): void
     {
         Log::info('SendWhatsappMessageJob: Processing send', [
             'message_id' => $this->message->id,

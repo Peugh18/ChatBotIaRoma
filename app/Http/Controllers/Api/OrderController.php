@@ -6,7 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\ConversationState;
 use App\Models\Customer;
 use App\Models\Order;
+use App\Services\ServicioModoConversacionPedido;
 use App\Models\OrderItem;
+use App\Support\EtapaVenta;
+use App\Ventas\Servicios\ServicioColaValidacionPago;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -123,8 +126,15 @@ class OrderController extends Controller
         $paymentValidationReady = false;
         if (($validated['status'] ?? null) === 'paid' && $order->conversation_state_id) {
             $state = ConversationState::find($order->conversation_state_id);
-            if ($state && ($state->context['sales_stage'] ?? null) === 'awaiting_payment_validation') {
+            if ($state && EtapaVenta::esValidacionPago($state)) {
                 $paymentValidationReady = ! $state->requires_human;
+            }
+        }
+
+        if (($validated['status'] ?? null) === 'delivered' && $order->conversation_state_id) {
+            $state = ConversationState::find($order->conversation_state_id);
+            if ($state) {
+                app(ServicioModoConversacionPedido::class)->reactivarBotTrasEntrega($state);
             }
         }
 
@@ -156,6 +166,8 @@ class OrderController extends Controller
         // 3. Conversaciones que requieren asesor humano
         $openConversations = ConversationState::where('requires_human', true)->count();
 
+        $paymentValidationQueue = app(ServicioColaValidacionPago::class)->pendientes(10);
+
         // 4. Clientes totales
         $totalCustomers = Customer::count();
 
@@ -176,6 +188,16 @@ class OrderController extends Controller
             'total_customers' => $totalCustomers,
             'conversion_rate' => round($conversionRate, 1),
             'recent_orders' => $recentOrders,
+            'payment_validation_count' => $paymentValidationQueue->count(),
+            'payment_validation_queue' => $paymentValidationQueue,
+        ]);
+    }
+
+    public function paymentValidationQueue(ServicioColaValidacionPago $cola): JsonResponse
+    {
+        return response()->json([
+            'items' => $cola->pendientes(30),
+            'count' => $cola->contar(),
         ]);
     }
 }

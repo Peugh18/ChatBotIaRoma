@@ -12,6 +12,7 @@ const props = defineProps<{
         price: number | null;
         discount: number | null;
         category_id: number | null;
+        status?: string;
         tags_ia: string[] | null;
         category: { id: number; name: string } | null;
         variants: {
@@ -56,6 +57,7 @@ const form = ref({
     price: props.product.price,
     discount: props.product.discount,
     category_id: props.product.category_id,
+    status: props.product.status || 'disponible',
     tags_ia: props.product.tags_ia || [],
     variants: props.product.variants.map(v => ({
         id: v.id,
@@ -70,6 +72,9 @@ const form = ref({
 });
 
 const categories = ref<Category[]>([]);
+const allProducts = ref<{ id: number; name: string }[]>([]);
+const similarIds = ref<number[]>([]);
+const savingSimilares = ref(false);
 const loading = ref(false);
 const newTag = ref('');
 
@@ -271,8 +276,61 @@ const submit = async () => {
     }
 };
 
+const fetchAllProducts = async () => {
+    try {
+        const list = await fetch('/api/products', { headers: { Accept: 'application/json' } }).then((r) => r.json());
+        allProducts.value = (list as { id: number; name: string }[]).filter((p) => p.id !== props.product.id);
+    } catch {
+        allProducts.value = [];
+    }
+};
+
+const fetchSimilares = async () => {
+    try {
+        const res = await fetch(`/api/products/${props.product.id}/similares`, {
+            headers: { Accept: 'application/json' },
+        });
+        const data = await res.json();
+        similarIds.value = (data.manual ?? []).map((m: { id: number }) => m.id);
+    } catch {
+        similarIds.value = [];
+    }
+};
+
+const saveSimilares = async () => {
+    savingSimilares.value = true;
+    try {
+        await fetch(`/api/products/${props.product.id}/similares`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'X-CSRF-TOKEN': getCsrfToken(),
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({ similar_product_ids: similarIds.value }),
+        });
+        alert('Similares guardados');
+    } catch {
+        alert('No se pudieron guardar los similares');
+    } finally {
+        savingSimilares.value = false;
+    }
+};
+
+const toggleSimilar = (id: number) => {
+    const idx = similarIds.value.indexOf(id);
+    if (idx >= 0) {
+        similarIds.value.splice(idx, 1);
+    } else if (similarIds.value.length < 5) {
+        similarIds.value.push(id);
+    }
+};
+
 onMounted(() => {
     fetchCategories();
+    fetchAllProducts();
+    fetchSimilares();
 });
 </script>
 
@@ -329,6 +387,21 @@ onMounted(() => {
                                 rows="3"
                                 class="block w-full rounded-md border-0 py-1.5 text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 dark:bg-gray-800 sm:text-sm sm:leading-6"
                             />
+                        </div>
+                    </div>
+
+                    <div class="sm:col-span-2">
+                        <label for="status" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Estado en bot</label>
+                        <div class="mt-2">
+                            <select
+                                id="status"
+                                v-model="form.status"
+                                class="block w-full rounded-md border-0 py-1.5 text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 dark:bg-gray-800 sm:text-sm"
+                            >
+                                <option value="disponible">Disponible</option>
+                                <option value="agotado">Agotado</option>
+                                <option value="oculto">Oculto (no se muestra)</option>
+                            </select>
                         </div>
                     </div>
 
@@ -494,6 +567,37 @@ onMounted(() => {
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-3">
+                    <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Productos similares (bot)</h3>
+                    <p class="text-xs text-gray-500">
+                        Si este modelo se agota, el bot ofrece estos primero (máx. 5). Si no eliges ninguno, usa la misma categoría automáticamente.
+                    </p>
+                    <div class="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
+                        <button
+                            v-for="p in allProducts"
+                            :key="p.id"
+                            type="button"
+                            class="rounded-full px-3 py-1 text-xs border transition-colors"
+                            :class="
+                                similarIds.includes(p.id)
+                                    ? 'bg-indigo-600 text-white border-indigo-600'
+                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600'
+                            "
+                            @click="toggleSimilar(p.id)"
+                        >
+                            {{ p.name }}
+                        </button>
+                    </div>
+                    <button
+                        type="button"
+                        class="text-sm text-indigo-600 dark:text-indigo-400"
+                        :disabled="savingSimilares"
+                        @click="saveSimilares"
+                    >
+                        {{ savingSimilares ? 'Guardando...' : 'Guardar similares' }}
+                    </button>
                 </div>
 
                 <div class="flex items-center justify-end gap-x-6">

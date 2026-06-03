@@ -7,9 +7,10 @@ use App\Events\MessageReceived;
 use App\Models\BotSetting;
 use App\Models\ConversationState;
 use App\Models\Message;
-use App\Services\DeterministicBotService;
-use App\Services\ProductMediaService;
-use App\Services\ToolExecutorService;
+use App\Services\ServicioBotEntrada;
+use App\Services\ServicioDescargaImagenWhatsapp;
+use App\Services\ServicioMediaProducto;
+use App\Services\ServicioEscalamientoHumano;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -126,7 +127,7 @@ class ProcessIncomingMessageJob implements ShouldQueue
      */
     protected function dispatchPendingProductImageIfNeeded(
         ?ConversationState $conversationState,
-        ProductMediaService $media
+        ServicioMediaProducto $media
     ): void {
         if (! $conversationState) {
             return;
@@ -166,7 +167,7 @@ class ProcessIncomingMessageJob implements ShouldQueue
 
     protected function dispatchOneProductImage(
         ConversationState $conversationState,
-        ProductMediaService $media,
+        ServicioMediaProducto $media,
         string $imageUrl,
         string $caption
     ): void {
@@ -213,47 +214,7 @@ class ProcessIncomingMessageJob implements ShouldQueue
         SendWhatsappMessageJob::dispatch($imageMessage);
     }
 
-    /**
-     * M2: Detecta si el mensaje es un saludo simple para responder con plantilla
-     * sin llamar al LLM (ahorra ~80% tokens en saludos).
-     */
-    protected function isSimpleGreeting(string $message): bool
-    {
-        $msg = trim(mb_strtolower($message));
-        $greetings = [
-            'hola', 'holi', 'holaaa', 'buenas', 'buenos dias', 'buenos días',
-            'buenas tardes', 'buenas noches', 'hi', 'hello', 'hey',
-            'que tal', 'qué tal', 'inicio', 'empezar', 'info', 'información', 'informacion',
-        ];
-
-        // Solo si el mensaje es CORTO y matchea un saludo
-        if (mb_strlen($msg) > 25) {
-            return false;
-        }
-
-        foreach ($greetings as $g) {
-            if ($msg === $g || $msg === $g.'!' || $msg === $g.'.') {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * M2: Genera saludo hardcoded sin invocar LLM.
-     */
-    protected function buildHardcodedGreeting(): string
-    {
-        return "¡Hola hermosa! 💕 Soy Roma de Vestidos Roma ✨\n\n".
-               "Te cuento qué podemos hacer hoy:\n".
-               "1️⃣ Ver vestidos de noche / fiesta 🌟\n".
-               "2️⃣ Ver vestidos casuales / oficina 👍\n".
-               "3️⃣ Solo estoy curioseando 👀\n\n".
-               'Respóndeme con el número o cuéntame qué buscas 📝';
-    }
-
-    public function handle(DeterministicBotService $botService, ProductMediaService $media): void
+    public function handle(ServicioBotEntrada $botService, ServicioMediaProducto $media): void
     {
         Log::info('ProcessIncomingMessageJob: Started processing message', [
             'message_id' => $this->message->id,
@@ -277,8 +238,16 @@ class ProcessIncomingMessageJob implements ShouldQueue
             return;
         }
 
-        // 1. Modo humano: si el asesor no escribe hace 15+ min, el bot vuelve a atender
+        // 1. Modo humano post-pedido: el asesor atiende hasta «Entregado» en pipeline (sin timeout 15 min)
         if ($conversationState && $conversationState->requires_human) {
+            if (app(\App\Services\ServicioModoConversacionPedido::class)->tieneAsesorPostPedido($conversationState)) {
+                Log::info('ProcessIncomingMessageJob: Post-pedido en modo humano, skipping bot', [
+                    'phone' => $this->message->phone_number,
+                ]);
+
+                return;
+            }
+
             $humanInactive = $conversationState->last_human_activity_at === null
                 || $conversationState->last_human_activity_at->lt(now()->subMinutes(15));
 
@@ -307,7 +276,7 @@ class ProcessIncomingMessageJob implements ShouldQueue
             ]);
 
             if ($conversationState) {
-                app(ToolExecutorService::class)->executeEscalateToHuman(
+                app(ServicioEscalamientoHumano::class)->escalar(
                     $conversationState,
                     'Cliente solicitó asesor humano'
                 );
@@ -326,39 +295,28 @@ class ProcessIncomingMessageJob implements ShouldQueue
                 $imageUrl = $incomingMeta['image_url'] ?? null;
             }
 
-            // Descargar imagen localmente si viene de Meta (las URLs expiran rápido)
-            if ($imageUrl && (str_contains((string)$imageUrl, 'lookaside.fbsbx.com') || str_contains((string)$imageUrl, 'graph.facebook.com'))) {
-                $waToken = config('services.roma.wa_token');
-                if ($waToken) {
-                    $imgRes = \Illuminate\Support\Facades\Http::withHeaders([
-                        'Authorization' => 'Bearer ' . $waToken,
-                        'User-Agent' => 'curl/7.68.0'
-                    ])->get($imageUrl);
-
-                    if ($imgRes->successful()) {
-                        $ext = 'jpg';
-                        $mime = $imgRes->header('Content-Type') ?? 'image/jpeg';
-                        if (str_contains($mime, 'png')) $ext = 'png';
-                        if (str_contains($mime, 'webp')) $ext = 'webp';
-
-                        $filename = 'customers/media/' . uniqid('img_') . '.' . $ext;
-                        \Illuminate\Support\Facades\Storage::disk('public')->put($filename, $imgRes->body());
-                        
-                        $imageUrl = \Illuminate\Support\Facades\Storage::disk('public')->url($filename);
-                        
-                        // Actualizar DB
-                        if (is_array($this->message->metadata)) {
-                            $newMeta = $this->message->metadata;
-                            $newMeta['image_url'] = $imageUrl;
-                            $this->message->update(['metadata' => $newMeta]);
-                        }
-                    } else {
-                        Log::warning('ProcessIncomingMessageJob: falló descarga de imagen de Meta', ['status' => $imgRes->status()]);
+            $descargaWa = app(ServicioDescargaImagenWhatsapp::class);
+            if ($imageUrl && $descargaWa->esUrlMeta((string) $imageUrl)) {
+                $resolvePayload = array_merge(
+                    is_array($incomingMeta) ? $incomingMeta : [],
+                    [
+                        'image_url' => $imageUrl,
+                        'wa_id' => $this->message->message_id,
+                        'raw' => $incomingMeta['whatsapp_raw'] ?? null,
+                    ]
+                );
+                $localUrl = $descargaWa->resolverDesdePayloadInbound($resolvePayload);
+                if ($localUrl) {
+                    $imageUrl = $localUrl;
+                    if (is_array($this->message->metadata)) {
+                        $newMeta = $this->message->metadata;
+                        $newMeta['image_url'] = $imageUrl;
+                        $this->message->update(['metadata' => $newMeta]);
                     }
                 }
             }
 
-            $result = $botService->process(
+            $result = $botService->procesar(
                 $this->message->phone_number,
                 $this->message->content,
                 $imageUrl,
@@ -369,16 +327,25 @@ class ProcessIncomingMessageJob implements ShouldQueue
                 $metadata = $result['metadata'];
             }
 
+            $tieneInteractivo = ($metadata['type'] ?? '') === 'interactive'
+                && ! empty($metadata['interactive']);
+            $tieneImagenPendiente = ! empty($metadata['pending_image_url']);
+            $debeEnviar = trim($botResponse) !== '' || $tieneInteractivo || $tieneImagenPendiente;
+
             Log::info('ProcessIncomingMessageJob: Bot process result', [
-                'has_response' => ! empty($botResponse),
-                'response_snippet' => ! empty($botResponse) ? substr($botResponse, 0, 50) : null,
+                'has_response' => $debeEnviar,
+                'response_snippet' => trim($botResponse) !== '' ? mb_substr($botResponse, 0, 50) : null,
+                'has_interactive' => $tieneInteractivo,
             ]);
 
             if (! empty($metadata['trigger_human_escalation'])) {
                 broadcast(new HumanEscalation($this->message))->toOthers();
             }
 
-            if ($botResponse) {
+            if ($debeEnviar) {
+                if (trim($botResponse) === '' && $tieneInteractivo) {
+                    $botResponse = (string) ($metadata['interactive']['body']['text'] ?? ' ');
+                }
                 // Detectar si el bot devolvió el mensaje de escalación (no pudo responder)
                 $settings = BotSetting::first();
                 if ($settings && $botResponse === $settings->escalation_message) {
@@ -399,11 +366,18 @@ class ProcessIncomingMessageJob implements ShouldQueue
 
                 // B3: Imagen de producto — enviar en mensaje separado (WhatsApp no muestra bien imagen + botones juntos)
                 $conversationState = ConversationState::where('phone_number', $this->message->phone_number)->first();
+                if ($conversationState && ! empty($metadata['pending_image_url'])) {
+                    $ctx = $conversationState->context ?? [];
+                    $ctx['pending_image_url'] = $metadata['pending_image_url'];
+                    $ctx['pending_image_caption'] = $metadata['pending_image_caption'] ?? '📸';
+                    $conversationState->context = $ctx;
+                    $conversationState->save();
+                }
                 $this->dispatchPendingProductImageIfNeeded($conversationState, $media);
 
-                // Extraer interactivos pendientes del contexto si existen
+                // Interactivo: prioridad metadata de respuesta; fallback legacy en context
                 $conversationState = ConversationState::where('phone_number', $this->message->phone_number)->first();
-                if ($conversationState && isset($conversationState->context['pending_interactive'])) {
+                if (empty($metadata['type']) && $conversationState && isset($conversationState->context['pending_interactive'])) {
                     $pendingInteractive = $conversationState->context['pending_interactive'];
                     $metadata['type'] = 'interactive';
                     $metadata['interactive'] = $pendingInteractive['interactive'];

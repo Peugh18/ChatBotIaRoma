@@ -3,12 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Services\BotMetricsService;
+use App\Services\ServicioMetricasBot;
 use Illuminate\Http\JsonResponse;
 
 class BotMetricsController extends Controller
 {
-    public function __invoke(BotMetricsService $metrics): JsonResponse
+    public function __invoke(ServicioMetricasBot $metrics): JsonResponse
     {
         $snapshot = $metrics->getDashboardSnapshot();
 

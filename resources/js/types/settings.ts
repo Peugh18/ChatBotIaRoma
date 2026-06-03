@@ -2,12 +2,13 @@ export interface BotSettings {
     id: number;
     system_prompt: string;
     welcome_message: string;
+    mensaje_presentacion: string | null;
     reminder_3min_message: string;
     reminder_15min_message: string;
     escalation_message: string;
     auto_reply_enabled: boolean;
     groq_api_key: string | null;
-    huggingface_token: string | null;
+    voyage_api_key: string | null;
     model_chat: string;
     model_vision: string;
     reminder_3min_seconds: number;

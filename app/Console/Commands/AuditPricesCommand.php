@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\PriceValidatorService;
+use App\Services\ServicioValidacionPrecios;
 use Illuminate\Console\Command;
 
 class AuditPricesCommand extends Command
@@ -14,7 +14,7 @@ class AuditPricesCommand extends Command
     {
         $this->info('🔍 Iniciando auditoría de precios...\n');
 
-        $audit = PriceValidatorService::auditAllProducts();
+        $audit = ServicioValidacionPrecios::auditAllProducts();
 
         $this->table(
             ['Métrica', 'Valor'],

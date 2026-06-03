@@ -1,10 +1,12 @@
 <?php
 
+use App\Http\Controllers\BotDebugController;
 use App\Http\Controllers\BotSettingsController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\CompanySettingController;
 use App\Http\Controllers\DeliveryZoneController;
+use App\Http\Controllers\SedeShalomController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\WhatsappMediaController;
 use Illuminate\Support\Facades\Broadcast;
@@ -34,9 +36,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('products/{product}/edit', [ProductController::class, 'edit'])->name('products.edit');
     Route::get('categories', [CategoryController::class, 'index'])->name('categories.index');
     Route::get('delivery-zones', [DeliveryZoneController::class, 'index'])->name('delivery-zones.index');
+    Route::get('sedes-shalom', [SedeShalomController::class, 'index'])->name('sedes-shalom.index');
     Route::get('company-settings', [CompanySettingController::class, 'index'])->name('company-settings.index');
     Route::get('chat', [ChatController::class, 'index'])->name('chat.index');
     Route::get('bot-settings', [BotSettingsController::class, 'index'])->name('bot-settings.index');
+    Route::get('bot-debug', [BotDebugController::class, 'index'])->name('bot-debug.index');
     Route::get('pipeline', function () {
         return Inertia::render('Pipeline/Index');
     })->name('pipeline.index');

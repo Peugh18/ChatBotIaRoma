@@ -5,7 +5,7 @@ import NavUser from '@/components/NavUser.vue';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/vue3';
-import { Bot, Building2, LayoutGrid, MessageSquare, Package, Settings, ShoppingBag, Tag, Truck, Users } from 'lucide-vue-next';
+import { Bot, Building2, FlaskConical, LayoutGrid, MapPin, MessageSquare, Package, Settings, ShoppingBag, Tag, Truck, Users } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
 
 const operationsNav: NavItem[] = [
@@ -19,11 +19,13 @@ const catalogNav: NavItem[] = [
     { title: 'Productos', url: '/products', icon: Package },
     { title: 'Categorías', url: '/categories', icon: Tag },
     { title: 'Zonas de delivery', url: '/delivery-zones', icon: Truck },
+    { title: 'Sedes Shalom', url: '/sedes-shalom', icon: MapPin },
 ];
 
 const configNav: NavItem[] = [
     { title: 'Empresa y voz', url: '/company-settings', icon: Building2 },
     { title: 'Personalidad del bot', url: '/bot-settings', icon: Bot },
+    { title: 'Debug del bot', url: '/bot-debug', icon: FlaskConical },
 ];
 </script>
 
