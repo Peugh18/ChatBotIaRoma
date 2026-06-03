@@ -34,12 +34,13 @@ class BotSettingsController extends Controller
         $validated = $request->validate([
             'system_prompt' => 'nullable|string',
             'welcome_message' => 'nullable|string',
+            'mensaje_presentacion' => 'nullable|string',
             'reminder_3min_message' => 'nullable|string',
             'reminder_15min_message' => 'nullable|string',
             'escalation_message' => 'nullable|string',
             'auto_reply_enabled' => 'nullable|boolean',
             'groq_api_key' => 'nullable|string',
-            'huggingface_token' => 'nullable|string',
+            'voyage_api_key' => 'nullable|string',
             'model_chat' => 'nullable|string',
             'model_vision' => 'nullable|string',
             'reminder_3min_seconds' => 'nullable|integer',
@@ -50,8 +51,8 @@ class BotSettingsController extends Controller
             unset($validated['groq_api_key']);
         }
 
-        if (isset($validated['huggingface_token']) && $this->isMaskedKey($validated['huggingface_token'])) {
-            unset($validated['huggingface_token']);
+        if (isset($validated['voyage_api_key']) && $this->isMaskedKey($validated['voyage_api_key'])) {
+            unset($validated['voyage_api_key']);
         }
 
         $settings->update($validated);
@@ -70,8 +71,8 @@ class BotSettingsController extends Controller
             $data['groq_api_key'] = $this->maskKey((string) $data['groq_api_key']);
         }
 
-        if (! empty($data['huggingface_token'])) {
-            $data['huggingface_token'] = $this->maskKey((string) $data['huggingface_token']);
+        if (! empty($data['voyage_api_key'])) {
+            $data['voyage_api_key'] = $this->maskKey((string) $data['voyage_api_key']);
         }
 
         return $data;

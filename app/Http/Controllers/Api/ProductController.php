@@ -23,6 +23,7 @@ class ProductController extends Controller
             'price' => 'required|numeric|min:0.01',
             'discount' => 'nullable|numeric|min:0',
             'category_id' => 'nullable|exists:categories,id',
+            'status' => 'nullable|string|in:disponible,agotado,oculto',
             'tags_ia' => 'nullable|array',
             'variants' => 'required|array',
             'variants.*.color' => 'required|string',
@@ -43,6 +44,7 @@ class ProductController extends Controller
             'price' => $validated['price'],
             'discount' => $validated['discount'] ?? null,
             'category_id' => $validated['category_id'] ?? null,
+            'status' => $validated['status'] ?? Product::ESTADO_DISPONIBLE,
             'tags_ia' => $validated['tags_ia'] ?? [],
         ]);
 
@@ -73,6 +75,7 @@ class ProductController extends Controller
             'price' => 'sometimes|required|numeric|min:0.01',
             'discount' => 'nullable|numeric|min:0',
             'category_id' => 'nullable|exists:categories,id',
+            'status' => 'sometimes|string|in:disponible,agotado,oculto',
             'tags_ia' => 'nullable|array',
             'variants' => 'sometimes|array',
             'variants.*.id' => 'nullable|exists:product_variants,id',
@@ -97,6 +100,7 @@ class ProductController extends Controller
             'price' => $newPrice,
             'discount' => $validated['discount'] ?? $product->discount,
             'category_id' => $validated['category_id'] ?? $product->category_id,
+            'status' => $validated['status'] ?? $product->status ?? Product::ESTADO_DISPONIBLE,
             'tags_ia' => $validated['tags_ia'] ?? $product->tags_ia,
         ]);
 

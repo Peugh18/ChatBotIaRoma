@@ -11,8 +11,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->singleton(\App\Services\ImageEmbeddingService::class, function ($app) {
-            return new \App\Services\ImageEmbeddingService();
+        $this->app->singleton(\App\Services\ServicioEmbeddingImagen::class, function ($app) {
+            return new \App\Services\ServicioEmbeddingImagen();
         });
     }
 

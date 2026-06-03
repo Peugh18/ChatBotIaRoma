@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\BotFlowDebugController;
 use App\Http\Controllers\Api\BotMetricsController;
 use App\Http\Controllers\Api\BotSettingsController;
 use App\Http\Controllers\Api\CatalogVisionController;
@@ -11,7 +12,9 @@ use App\Http\Controllers\Api\DeliveryZoneController;
 use App\Http\Controllers\Api\HealthCheckController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\ProductoSimilarController;
 use App\Http\Controllers\Api\ProductVariantPhotoController;
+use App\Http\Controllers\Api\SedeShalomController;
 use App\Http\Controllers\Api\RomaSyncController;
 use App\Http\Middleware\RateLimitTools;
 use Illuminate\Support\Facades\Route;
@@ -37,9 +40,15 @@ Route::middleware(['web', 'auth'])->group(function () {
     Route::post('product-variants/{variant}/photo', [ProductVariantPhotoController::class, 'store']);
     Route::apiResource('categories', CategoryController::class);
     Route::apiResource('delivery-zones', DeliveryZoneController::class);
+    Route::apiResource('sedes-shalom', SedeShalomController::class)->except(['show']);
+    Route::get('products/{product}/similares', [ProductoSimilarController::class, 'show']);
+    Route::put('products/{product}/similares', [ProductoSimilarController::class, 'update']);
     Route::apiResource('customers', CustomerController::class);
     Route::apiResource('orders', OrderController::class);
     Route::get('dashboard-stats', [OrderController::class, 'getStats']);
+    Route::get('payment-validation-queue', [OrderController::class, 'paymentValidationQueue']);
+    Route::post('bot-debug/simulate', [BotFlowDebugController::class, 'simulate']);
+    Route::post('bot-debug/reset', [BotFlowDebugController::class, 'reset']);
     Route::get('health', [HealthCheckController::class, 'dashboard']);
     Route::get('company-settings', [CompanySettingController::class, 'index']);
     Route::put('company-settings', [CompanySettingController::class, 'update']);

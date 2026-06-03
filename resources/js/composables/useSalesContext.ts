@@ -6,8 +6,9 @@ import { useCsrfToken } from '@/composables/useCsrfToken';
 export function useSalesContext(
     selectedPhone: Ref<string | null>,
     currentConversationMode: Ref<'bot' | 'human'>,
-    onPhotoSent?: () => Promise<void>,
+    onPhotoSent?: (afterPayment?: boolean) => Promise<void>,
     isAutoEscalated?: Ref<boolean>,
+    asesorPostPedido?: Ref<boolean>,
 ) {
     const salesContext = ref<SalesContext | null>(null);
     const loadingSalesContext = ref(false);
@@ -66,14 +67,23 @@ export function useSalesContext(
         paymentValidationError.value = null;
 
         try {
-            await apiJson(`/api/conversations/${encodeURIComponent(selectedPhone.value)}/validate-payment`, {
+            const data = await apiJson<{
+                mode?: string;
+                requires_human?: boolean;
+                is_auto_escalated?: boolean;
+                asesor_post_pedido?: boolean;
+            }>(`/api/conversations/${encodeURIComponent(selectedPhone.value)}/validate-payment`, {
                 method: 'POST',
             });
-            currentConversationMode.value = 'bot';
+            const human = data.mode === 'human' || data.requires_human === true;
+            currentConversationMode.value = human ? 'human' : 'bot';
             if (isAutoEscalated) {
-                isAutoEscalated.value = false;
+                isAutoEscalated.value = Boolean(data.is_auto_escalated);
             }
-            await onPhotoSent?.();
+            if (asesorPostPedido) {
+                asesorPostPedido.value = Boolean(data.asesor_post_pedido);
+            }
+            await onPhotoSent?.(Boolean(data.asesor_post_pedido));
             await fetchSalesContext(selectedPhone.value);
 
             return true;

@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\ConversationState;
+use App\Services\ServicioModoConversacionPedido;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -27,12 +28,15 @@ class AutoReturnToBotJob implements ShouldQueue
         $threshold = now()->subMinutes($this->inactivityThresholdMinutes);
 
         // Buscar conversaciones en modo humano sin actividad reciente
+        $modoPedido = app(ServicioModoConversacionPedido::class);
+
         $conversationsToReturn = ConversationState::where('requires_human', true)
             ->where(function ($query) use ($threshold) {
                 $query->whereNull('last_human_activity_at')
                       ->orWhere('last_human_activity_at', '<', $threshold);
             })
-            ->get();
+            ->get()
+            ->filter(fn (ConversationState $c) => ! $modoPedido->tieneAsesorPostPedido($c));
 
         $count = 0;
         foreach ($conversationsToReturn as $conversation) {

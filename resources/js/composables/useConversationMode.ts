@@ -10,6 +10,7 @@ export function useConversationMode(
 ) {
     const currentConversationMode = ref<'bot' | 'human'>('bot');
     const isAutoEscalated = ref(false);
+    const asesorPostPedido = ref(false);
     const { refreshCsrfToken } = useCsrfToken();
 
     const fetchConversationMode = async (phone: string) => {
@@ -21,9 +22,11 @@ export function useConversationMode(
                 const data = (await response.json()) as {
                     mode: 'bot' | 'human';
                     is_auto_escalated: boolean;
+                    asesor_post_pedido?: boolean;
                 };
                 currentConversationMode.value = data.mode;
                 isAutoEscalated.value = data.is_auto_escalated;
+                asesorPostPedido.value = Boolean(data.asesor_post_pedido);
             }
         } catch (error) {
             console.error('Error fetching conversation mode:', error);
@@ -68,6 +71,9 @@ export function useConversationMode(
 
             currentConversationMode.value = mode;
             isAutoEscalated.value = false;
+            if (mode === 'bot') {
+                asesorPostPedido.value = false;
+            }
 
             const conv = conversations.value.find((c) => c.phone === selectedPhone.value);
             if (conv) {
@@ -92,6 +98,7 @@ export function useConversationMode(
     return {
         currentConversationMode,
         isAutoEscalated,
+        asesorPostPedido,
         fetchConversationMode,
         updateConversationMode,
     };

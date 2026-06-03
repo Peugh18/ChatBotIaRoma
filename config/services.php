@@ -39,6 +39,8 @@ return [
         'url' => env('ROMA_API_URL'),
         'token' => env('ROMA_SYNC_TOKEN'),
         'wa_token' => env('WA_TOKEN'),
+        /** URL pública ngrok de roma-api (puerto 3000), misma que ROMA_API_PUBLIC_URL allí */
+        'api_public_url' => env('ROMA_API_PUBLIC_URL'),
         'webhook_secret' => env('ROMA_WEBHOOK_SECRET'),
         // Contrato WhatsApp v1: text, image, interactive (kind button|list), template
         'contract_version' => 1,

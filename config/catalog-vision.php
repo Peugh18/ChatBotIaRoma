@@ -3,82 +3,27 @@
 return [
     /*
     |--------------------------------------------------------------------------
-    | Hugging Face Configuration
+    | Voyage AI (reconocimiento visual del catálogo)
     |--------------------------------------------------------------------------
     |
-    | Configuration for CLIP embeddings and image matching via Hugging Face API.
+    | Embeddings multimodales vía voyage-multimodal-3.5 para búsqueda visual.
+    | Docs: https://docs.voyageai.com/docs/multimodal-embeddings
     |
     */
 
-    'huggingface_token' => env('HUGGINGFACE_TOKEN', null),
+    'voyage_api_key' => env('VOYAGE_API_KEY'),
 
-    /*
-    |--------------------------------------------------------------------------
-    | CLIP Model Configuration
-    |--------------------------------------------------------------------------
-    |
-    | Model to use for generating embeddings.
-    |
-    */
+    'voyage_model' => env('CATALOG_VISION_VOYAGE_MODEL', 'voyage-multimodal-3.5'),
 
-    'clip_model' => env('CATALOG_VISION_CLIP_MODEL', 'openai/clip-vit-large-patch14'),
+    'voyage_api_url' => env('CATALOG_VISION_VOYAGE_URL', 'https://api.voyageai.com/v1/multimodalembeddings'),
 
-    /*
-    |--------------------------------------------------------------------------
-    | Similarity Threshold
-    |--------------------------------------------------------------------------
-    |
-    | Minimum cosine similarity score (0-1) to consider a match.
-    | Typical range: 0.65-0.80
-    |
-    */
+    'voyage_dimensions' => (int) env('CATALOG_VISION_VOYAGE_DIMENSIONS', 1024),
 
     'min_similarity' => (float) env('CATALOG_VISION_MIN_SIMILARITY', 0.72),
 
-    /*
-    |--------------------------------------------------------------------------
-    | Top K Results
-    |--------------------------------------------------------------------------
-    |
-    | Number of top matching variants to return.
-    | If > 1, show user a selection; if = 1, go directly to product.
-    |
-    */
-
     'top_k' => (int) env('CATALOG_VISION_TOP_K', 3),
 
-    /*
-    |--------------------------------------------------------------------------
-    | Indexing Sleep (ms)
-    |--------------------------------------------------------------------------
-    |
-    | Milliseconds to sleep between API calls during batch indexing.
-    | Prevents rate limiting.
-    |
-    */
-
     'index_sleep_ms' => (int) env('CATALOG_VISION_INDEX_SLEEP_MS', 1000),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Hugging Face API Endpoint
-    |--------------------------------------------------------------------------
-    |
-    | Base URL for Hugging Face inference API.
-    |
-    */
-
-    'huggingface_api_url' => env('HUGGINGFACE_API_URL', 'https://api-inference.huggingface.co'),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Enable Vision Matching
-    |--------------------------------------------------------------------------
-    |
-    | Whether to enable CLIP-based image matching.
-    | If false, falls back to Groq vision + text search.
-    |
-    */
 
     'enabled' => env('CATALOG_VISION_ENABLED', true),
 ];

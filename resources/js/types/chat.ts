@@ -15,6 +15,7 @@ export interface ChatMessage {
         id: number;
         requires_human: boolean;
         is_auto_escalated?: boolean;
+        asesor_post_pedido?: boolean;
     } | null;
     whatsapp_timestamp?: string | null;
 }
@@ -27,10 +28,13 @@ export interface ChatConversation {
     count: number;
     requires_human: boolean;
     is_auto_escalated: boolean;
+    asesor_post_pedido: boolean;
     customer_id: number | null;
 }
 
 export type ChatFilterType = 'all' | 'human' | 'ai';
+
+export type ChatInboxTab = 'active' | 'shipping';
 
 export interface OrderItem {
     id: number;
@@ -104,18 +108,48 @@ export interface PaymentValidationContext {
     payment_proof_url: string | null;
 }
 
+export interface CartLineContext {
+    producto: string;
+    color: string;
+    talla: string;
+    precio: number;
+}
+
+export interface StockPorColorRow {
+    color: string;
+    tallas: string[];
+    agotado: boolean;
+}
+
+export interface PedidoConfirmadoLine {
+    product: string | null;
+    color: string | null;
+    size: string | null;
+    qty: number;
+    total: number;
+}
+
 export interface SalesContext {
     phone: string;
     sales_stage: string | null;
+    etapa_venta?: string | null;
+    etapa_venta_label?: string | null;
+    asesor_post_pedido?: boolean;
+    pedido_confirmado_items?: PedidoConfirmadoLine[];
     payment_validation?: PaymentValidationContext;
     handoff: { summary?: string; reason?: string } | null;
     current_product: {
         id: number;
         name: string;
         price: number;
+        status?: string;
         selected_color: string | null;
         selected_size: string | null;
     } | null;
+    stock_por_color?: StockPorColorRow[];
+    carrito?: CartLineContext[];
+    carrito_subtotal?: number;
+    datos_envio?: Record<string, string | number | null> | null;
     colors: ColorGalleryItem[];
     recent_products: SalesContextProduct[];
     featured_products: Array<{

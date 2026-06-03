@@ -1,10 +1,19 @@
 import { onMounted, onUnmounted } from 'vue';
 import type { ChatMessage, EscalationAlert } from '@/types/chat';
 
+interface ConversationModePayload {
+    phone_number: string;
+    mode: 'bot' | 'human';
+    requires_human?: boolean;
+    is_auto_escalated?: boolean;
+    asesor_post_pedido?: boolean;
+}
+
 interface ChatRealtimeHandlers {
     onPoll: () => void;
     onMessageReceived: (message: ChatMessage) => void;
     onEscalation: (alert: EscalationAlert) => void;
+    onConversationMode?: (payload: ConversationModePayload) => void;
 }
 
 export function useChatRealtime(handlers: ChatRealtimeHandlers) {
@@ -23,6 +32,10 @@ export function useChatRealtime(handlers: ChatRealtimeHandlers) {
 
                 echo.private('crm.messages').listen('.message.received', (e: { message: ChatMessage }) => {
                     handlers.onMessageReceived(e.message);
+                });
+
+                echo.private('crm.messages').listen('.conversation.mode', (e: ConversationModePayload) => {
+                    handlers.onConversationMode?.(e);
                 });
 
                 echo.private('crm.escalations').listen(

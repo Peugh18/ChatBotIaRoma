@@ -60,8 +60,12 @@
         ],
         "dev:ngrok": [
             "Composer\\Config::disableProcessTimeout",
-            "@php -r \"if (is_file('public/hot')) { unlink('public/hot'); }\"",
+            "@prepare:ngrok",
             "npx concurrently -c \"#93c5fd,#c4b5fd,#4ade80\" \"php artisan serve\" \"php artisan queue:listen --tries=5\" \"php artisan schedule:work\" --names='server,queue,scheduler'"
+        ],
+        "prepare:ngrok": [
+            "@php -r \"if (is_file('public/hot')) { unlink('public/hot'); echo 'Removed public/hot'.PHP_EOL; }\"",
+            "npm run build"
         ]
     },
     "extra": {

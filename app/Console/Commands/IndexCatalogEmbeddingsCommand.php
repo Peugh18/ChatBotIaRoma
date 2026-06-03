@@ -3,8 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Models\ProductVariant;
-use App\Services\ImageEmbeddingService;
-use App\Services\ProductMediaService;
+use App\Services\ServicioEmbeddingImagen;
+use App\Services\ServicioMediaProducto;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -13,9 +13,9 @@ class IndexCatalogEmbeddingsCommand extends Command
 {
     protected $signature = 'catalog:index-embeddings {--force : Force re-indexing all variants}';
 
-    protected $description = 'Index product variant embeddings using CLIP';
+    protected $description = 'Index product variant embeddings using Voyage multimodal';
 
-    public function handle(ImageEmbeddingService $embeddingService, ProductMediaService $media): int
+    public function handle(ServicioEmbeddingImagen $embeddingService, ServicioMediaProducto $media): int
     {
         $force = $this->option('force');
         
@@ -44,20 +44,18 @@ class IndexCatalogEmbeddingsCommand extends Command
 
         foreach ($variants as $variant) {
             try {
-                $imageSource = $media->resolvePublicUrl($variant)
-                    ?? $variant->image_url
-                    ?? $variant->image_path;
+                $imageSource = $media->resolveEmbeddingSource($variant);
                 if (!$imageSource) {
                     $failed++;
                     continue;
                 }
 
-                $embedding = $embeddingService->getEmbedding($imageSource);
+                $embedding = $embeddingService->getEmbedding($imageSource, 'document');
                 if ($embedding) {
                     $variant->update([
                         'embedding' => $embedding,
                         'embedding_indexed_at' => now(),
-                        'embedding_model' => config('catalog-vision.clip_model'),
+                        'embedding_model' => config('catalog-vision.voyage_model'),
                     ]);
                     $indexed++;
                     $this->line("✓ Indexed variant {$variant->id}");

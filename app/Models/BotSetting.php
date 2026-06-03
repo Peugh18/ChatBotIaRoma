@@ -11,6 +11,7 @@ class BotSetting extends Model
         'yape_number',
         'yape_holder',
         'welcome_message',
+        'mensaje_presentacion',
         'reminder_3min_message',
         'reminder_15min_message',
         'escalation_message',
@@ -20,7 +21,7 @@ class BotSetting extends Model
         'model_vision',
         'reminder_3min_seconds',
         'reminder_15min_seconds',
-        'huggingface_token',
+        'voyage_api_key',
     ];
 
     protected $casts = [

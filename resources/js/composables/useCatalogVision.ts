@@ -13,6 +13,7 @@ export type CatalogVisionStats = {
     token_configured: boolean;
     public_url_configured: boolean;
     last_indexed_at: string | null;
+    indexing_note: string | null;
 };
 
 export function useCatalogVision() {
@@ -46,7 +47,7 @@ export function useCatalogVision() {
             success.value = result.message;
             await fetchStats();
         } catch {
-            error.value = 'No se pudo encolar la indexación. Revisa el token Hugging Face y la cola.';
+            error.value = 'No se pudo encolar la indexación. Revisa la API Key de Voyage y la cola.';
         } finally {
             reindexing.value = false;
         }

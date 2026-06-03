@@ -20,6 +20,9 @@ export function useChatPage() {
         retryingMessageIds,
         newMessage,
         filterType,
+        inboxTab,
+        allConversations,
+        shippingInboxCount,
         conversations,
         fetchMessages,
         scrollToBottom,
@@ -43,7 +46,7 @@ export function useChatPage() {
     const { customerDetails, savingCustomer, profileMessage, saveCustomerProfile, addTag, removeTag, loadCustomerIfNeeded } =
         useChatCustomer(selectedCustomerId, fetchMessages);
 
-    const { currentConversationMode, isAutoEscalated, fetchConversationMode, updateConversationMode } =
+    const { currentConversationMode, isAutoEscalated, asesorPostPedido, fetchConversationMode, updateConversationMode } =
         useConversationMode(selectedPhone, conversations, customerDetails, fetchMessages);
 
     const {
@@ -61,7 +64,23 @@ export function useChatPage() {
         validatePayment,
         validatingPayment,
         paymentValidationError,
-    } = useSalesContext(selectedPhone, currentConversationMode, fetchMessages, isAutoEscalated);
+    } = useSalesContext(
+        selectedPhone,
+        currentConversationMode,
+        async (afterPayment?: boolean) => {
+            await fetchMessages();
+            if (selectedPhone.value) {
+                await fetchConversationMode(selectedPhone.value);
+            }
+            if (afterPayment) {
+                asesorPostPedido.value = true;
+                isAutoEscalated.value = false;
+                inboxTab.value = 'shipping';
+            }
+        },
+        isAutoEscalated,
+        asesorPostPedido,
+    );
 
     const { sendError, sendMessage, retryMessage } = useChatOutbound({
         selectedPhone,
@@ -120,6 +139,35 @@ export function useChatPage() {
             pushEscalationAlert(alert);
             fetchMessages();
         },
+        onConversationMode: (payload) => {
+            const conv = conversations.value.find((c) => c.phone === payload.phone_number);
+            const human = payload.mode === 'human' || payload.requires_human === true;
+            if (conv) {
+                conv.requires_human = human;
+                conv.is_auto_escalated = payload.is_auto_escalated ?? false;
+                if ('asesor_post_pedido' in payload) {
+                    conv.asesor_post_pedido = Boolean(payload.asesor_post_pedido);
+                    if (conv.asesor_post_pedido) {
+                        conv.is_auto_escalated = false;
+                    }
+                }
+            }
+            if (selectedPhone.value === payload.phone_number) {
+                currentConversationMode.value = human ? 'human' : 'bot';
+                isAutoEscalated.value = payload.is_auto_escalated ?? false;
+                if ('asesor_post_pedido' in payload) {
+                    asesorPostPedido.value = Boolean(payload.asesor_post_pedido);
+                    if (!payload.asesor_post_pedido) {
+                        inboxTab.value = 'active';
+                    }
+                } else {
+                    void fetchConversationMode(payload.phone_number);
+                }
+                if (customerDetails.value?.conversation_state) {
+                    customerDetails.value.conversation_state.requires_human = human;
+                }
+            }
+        },
     });
 
     watch(selectedPhone, (phone) => {
@@ -127,6 +175,10 @@ export function useChatPage() {
         customerDetails.value = null;
         clearSalesContext();
         if (phone) {
+            const conv = allConversations.value.find((c) => c.phone === phone);
+            if (conv?.asesor_post_pedido) {
+                inboxTab.value = 'shipping';
+            }
             fetchConversationMode(phone);
             fetchSalesContext(phone);
         }
@@ -137,13 +189,17 @@ export function useChatPage() {
     });
 
     watch(
-        conversations,
+        allConversations,
         (list) => {
             if (selectedPhone.value) {
                 return;
             }
             const phone = new URLSearchParams(window.location.search).get('phone');
-            if (phone && list.some((c) => c.phone === phone)) {
+            const conv = phone ? list.find((c) => c.phone === phone) : undefined;
+            if (conv) {
+                if (conv.asesor_post_pedido) {
+                    inboxTab.value = 'shipping';
+                }
                 selectedPhone.value = phone;
             }
         },
@@ -164,6 +220,8 @@ export function useChatPage() {
         retryingMessageIds,
         newMessage,
         filterType,
+        inboxTab,
+        shippingInboxCount,
         conversations,
         filteredMessages,
         customerDetails,
@@ -180,6 +238,7 @@ export function useChatPage() {
         photoError,
         currentConversationMode,
         isAutoEscalated,
+        asesorPostPedido,
         sendError,
         saveCustomerProfile,
         addTag,
