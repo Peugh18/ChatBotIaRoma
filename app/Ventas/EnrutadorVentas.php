@@ -55,12 +55,12 @@ class EnrutadorVentas
             return $this->checkout->procesar($estado, $cliente, $mensaje, $etapa);
         }
 
-        if ($this->esEtapaCheckout($etapa)) {
-            return $this->checkout->procesar($estado, $cliente, $mensaje, $etapa);
-        }
-
         if ($m === 'agregar otro producto' || $m === 'add_more_product') {
             return $this->presentacion->masProductos($estado);
+        }
+
+        if ($this->esEtapaCheckout($etapa)) {
+            return $this->checkout->procesar($estado, $cliente, $mensaje, $etapa);
         }
 
         if ($m === 'confirmar pedido' || $m === 'confirm_cart') {

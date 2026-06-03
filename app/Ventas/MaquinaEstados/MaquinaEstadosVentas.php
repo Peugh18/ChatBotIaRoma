@@ -47,6 +47,7 @@ class MaquinaEstadosVentas
     {
         $ctx = $estado->context ?? [];
         $ctx['carrito'] = $lineas;
+        unset($ctx['ultimo_pedido_id'], $ctx['last_order_id']);
         $estado->context = $ctx;
         $estado->save();
     }
@@ -80,6 +81,8 @@ class MaquinaEstadosVentas
             $ctx['pending_interactive'],
             $ctx['pending_image_url'],
             $ctx['pending_image_caption'],
+            $ctx['ultimo_pedido_id'],
+            $ctx['last_order_id']
         );
         $estado->context = $ctx;
         $this->establecer($estado, EtapaVentas::INICIO);

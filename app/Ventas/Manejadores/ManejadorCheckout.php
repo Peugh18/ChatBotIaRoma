@@ -99,6 +99,22 @@ class ManejadorCheckout
                 return $this->preguntarMetodoEnvio($estado);
             }
 
+            // Recalcular el costo de envío porque se limpia tras cada compra
+            $metodo = $datos['metodo'] ?? '';
+            $costo = 0.0;
+            if ($metodo === 'shalom') {
+                $sedeId = (int) ($datos['sede_shalom_id'] ?? 0);
+                if ($sedeId > 0) {
+                    $costo = $this->envios->costoShalomPorSede($sedeId);
+                } else {
+                    $costo = $this->envios->costoShalomPorSede(null, 'provincia');
+                }
+            } else {
+                $zona = $this->envios->resolverDistrito($datos['distrito'] ?? '');
+                $costo = $this->envios->costoMotorizado($zona);
+            }
+            $this->maquina->guardarCostoEnvio($estado, $costo);
+
             return $this->mostrarResumen($estado);
         }
 
@@ -108,6 +124,18 @@ class ManejadorCheckout
 
         if ($m === 'confirm_resumen' || $m === 'confirmar resumen') {
             return $this->preguntarMetodoPago($estado);
+        }
+
+        if ($m === 'edit_cart' || $m === 'editar compra' || $m === 'editar carrito') {
+            return $this->preguntarEliminarItem($estado);
+        }
+
+        if (preg_match('/^rm_item_(\d+)$/', $m, $match)) {
+            return $this->removerItem($estado, (int) $match[1]);
+        }
+
+        if ($m === 'cancel_edit_cart') {
+            return $this->mostrarResumen($estado);
         }
 
         if ($m === 'pay_yape' || $m === 'pago_yape') {
@@ -371,7 +399,12 @@ class ManejadorCheckout
 
         $lineas = [];
         foreach ($revalidado['lineas'] as $l) {
-            $lineas[] = '· '.$l['nombre'].' '.$l['color'].' '.$l['talla'].' — S/'.number_format((float) $l['precio'], 0);
+            $nombre = trim($l['nombre'] ?? 'Producto');
+            $color = trim($l['color'] ?? '-');
+            $talla = trim($l['talla'] ?? '-');
+            $precio = number_format((float) ($l['precio'] ?? 0), 0);
+            
+            $lineas[] = "🛍️ *{$nombre}*\n   └ Color: {$color} | Talla: {$talla} | S/{$precio}";
         }
 
         $datos = $this->maquina->datosEnvio($estado);
@@ -389,9 +422,81 @@ class ManejadorCheckout
 
         $payload = $this->interactivos->construir($texto, [
             ['id' => 'confirm_resumen', 'title' => 'Confirmar total'],
+            ['id' => 'edit_cart', 'title' => 'Editar compra'],
         ]);
 
         return RespuestaBot::conInteractivo('', $payload);
+    }
+
+    protected function preguntarEliminarItem(ConversationState $estado): RespuestaBot
+    {
+        $lineas = $this->maquina->carrito($estado);
+        if (count($lineas) === 0) {
+            return RespuestaBot::texto("Tu carrito está vacío.");
+        }
+
+        $rows = [];
+        foreach ($lineas as $idx => $linea) {
+            $nombre = trim($linea['nombre'] ?? 'Producto');
+            $color = trim($linea['color'] ?? '-');
+            $talla = trim($linea['talla'] ?? '-');
+            $precio = number_format((float) ($linea['precio'] ?? 0), 0);
+            
+            $titleCorto = mb_substr($nombre, 0, 21);
+            $desc = mb_substr("Color: {$color} | Talla: {$talla} | S/{$precio}", 0, 72);
+            
+            $rows[] = [
+                'id' => 'rm_item_' . $idx,
+                'title' => '❌ ' . $titleCorto,
+                'description' => $desc,
+            ];
+        }
+        
+        $rows[] = [
+            'id' => 'add_more_product',
+            'title' => '➕ Agregar producto',
+            'description' => 'Ir al catálogo para sumar más cosas',
+        ];
+        
+        $rows[] = [
+            'id' => 'cancel_edit_cart',
+            'title' => 'Volver al resumen',
+            'description' => 'No eliminar nada',
+        ];
+
+        $payload = [
+            'kind' => 'list',
+            'body' => ['text' => "¿Qué producto deseas eliminar de tu compra?\n\nToca el botón de abajo para ver tu lista y elegir qué producto quitar."],
+            'button' => 'Ver lista',
+            'sections' => [
+                ['title' => 'Opciones de edición', 'rows' => $rows],
+            ],
+        ];
+
+        return RespuestaBot::conInteractivo('', $payload);
+    }
+
+    protected function removerItem(ConversationState $estado, int $idx): RespuestaBot
+    {
+        $lineas = $this->maquina->carrito($estado);
+        if (isset($lineas[$idx])) {
+            unset($lineas[$idx]);
+            $lineas = array_values($lineas);
+            
+            $ctx = $estado->context ?? [];
+            unset($ctx['ultimo_pedido_id'], $ctx['last_order_id']);
+            $estado->context = $ctx;
+            $estado->save();
+            
+            $this->maquina->guardarCarrito($estado, $lineas);
+            
+            if (count($lineas) === 0) {
+                $this->maquina->reiniciarCarrito($estado);
+                return RespuestaBot::texto("Tu carrito quedó vacío 🛒 Escribe *hola* para volver a ver el catálogo."); 
+            }
+        }
+        
+        return $this->mostrarResumen($estado);
     }
 
     protected function preguntarMetodoPago(ConversationState $estado): RespuestaBot

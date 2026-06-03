@@ -43,10 +43,6 @@ class ServicioModoConversacionPedido
 
     public function reactivarBotTrasEntrega(ConversationState $estado): void
     {
-        if (! $this->tieneAsesorPostPedido($estado)) {
-            return;
-        }
-
         $ctx = $estado->context ?? [];
         unset($ctx[self::CTX_ASESOR_POST_PEDIDO], $ctx['asesor_post_pedido_order_id']);
         $estado->update([
@@ -56,7 +52,9 @@ class ServicioModoConversacionPedido
             'last_human_activity_at' => null,
         ]);
 
-        Log::info('ServicioModoConversacionPedido: pedido entregado, vuelve modo bot', [
+        app(\App\Ventas\MaquinaEstados\MaquinaEstadosVentas::class)->finalizarValidacionPago($estado);
+
+        Log::info('ServicioModoConversacionPedido: pedido entregado, vuelve modo bot y se reinicia flujo a 0', [
             'phone' => $estado->phone_number,
         ]);
 
