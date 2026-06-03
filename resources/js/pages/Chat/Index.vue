@@ -92,11 +92,11 @@ const showSelectedPhoneSubtitle = computed(() => {
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="crm-page crm-page--chat">
             <div class="crm-chat-top">
-            <PageHeader
+            <!--PageHeader
                 class="!mb-0"
                 title="Chat WhatsApp"
                 description="Conversaciones en tiempo real, contexto de venta y control de handoff humano."
-            />
+            /-->
 
             <div
                 v-if="escalationAlerts.length"
@@ -110,7 +110,7 @@ const showSelectedPhoneSubtitle = computed(() => {
                 </ul>
             </div>
 
-            <div v-if="botMetrics" class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <!--div v-if="botMetrics" class="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <StatCard label="Intenciones" :value="botMetrics.summary.intent_total" tone="success" />
                 <StatCard label="Rutas ejecutadas" :value="botMetrics.summary.route_total" />
                 <StatCard
@@ -118,7 +118,7 @@ const showSelectedPhoneSubtitle = computed(() => {
                     :value="botMetrics.summary.error_total"
                     :tone="botMetrics.summary.error_total > 0 ? 'danger' : 'success'"
                 />
-            </div>
+            </div-->
             </div>
 
             <div class="crm-chat-body">

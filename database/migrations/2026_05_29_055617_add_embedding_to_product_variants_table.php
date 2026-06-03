@@ -11,11 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('product_variants', function (Blueprint $table) {
-            $table->json('embedding')->nullable()->comment('CLIP embedding vector as array of floats');
-            $table->timestamp('embedding_indexed_at')->nullable()->comment('When embedding was last indexed');
-            $table->string('embedding_model')->nullable()->comment('Model used for embedding (e.g. openai/clip-vit-large-patch14)');
-        });
+        if (!Schema::hasColumn('product_variants', 'embedding')) {
+            Schema::table('product_variants', function (Blueprint $table) {
+                $table->json('embedding')->nullable()->comment('CLIP embedding vector as array of floats');
+                $table->timestamp('embedding_indexed_at')->nullable()->comment('When embedding was last indexed');
+                $table->string('embedding_model')->nullable()->comment('Model used for embedding (e.g. openai/clip-vit-large-patch14)');
+            });
+        }
     }
 
     /**

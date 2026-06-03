@@ -126,8 +126,10 @@ class OrderController extends Controller
         $paymentValidationReady = false;
         if (($validated['status'] ?? null) === 'paid' && $order->conversation_state_id) {
             $state = ConversationState::find($order->conversation_state_id);
-            if ($state && EtapaVenta::esValidacionPago($state)) {
-                $paymentValidationReady = ! $state->requires_human;
+            if ($state) {
+                // If the state is still in VALIDACION_PAGO, the payment was just validated.
+                // We should ensure the conversation switches to human mode so the advisor coordinates delivery.
+                app(ServicioModoConversacionPedido::class)->activarHumanoTrasConfirmacion($state, $order->id);
             }
         }
 

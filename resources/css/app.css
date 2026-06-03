@@ -105,8 +105,10 @@ html {
         max-height: calc(100svh - 4rem);
     }
 
+
+
     .crm-chat-top {
-        @apply shrink-0 space-y-5 pb-6;
+        /* @apply shrink-0 space-y-5 pb-6;*/
     }
 
     .crm-chat-body {
