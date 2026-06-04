@@ -13,12 +13,23 @@ defineProps<Props>();
 </script>
 
 <template>
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 42" :class="className" v-bind="$attrs">
-        <path
-            fill="currentColor"
-            fill-rule="evenodd"
-            clip-rule="evenodd"
-            d="M17.2 5.633 8.6.855 0 5.633v26.51l16.2 9 16.2-9v-8.442l7.6-4.223V9.856l-8.6-4.777-8.6 4.777V18.3l-5.6 3.111V5.633ZM38 18.301l-5.6 3.11v-6.157l5.6-3.11V18.3Zm-1.06-7.856-5.54 3.078-5.54-3.079 5.54-3.078 5.54 3.079ZM24.8 18.3v-6.157l5.6 3.111v6.158L24.8 18.3Zm-1 1.732 5.54 3.078-13.14 7.302-5.54-3.078 13.14-7.3v-.002Zm-16.2 7.89 7.6 4.222V38.3L2 30.966V7.92l5.6 3.111v16.892ZM8.6 9.3 3.06 6.222 8.6 3.143l5.54 3.08L8.6 9.3Zm21.8 15.51-13.2 7.334V38.3l13.2-7.334v-6.156ZM9.6 11.034l5.6-3.11v14.6l-5.6 3.11v-14.6Z"
-        />
+    <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 48 48"
+        :class="className"
+        v-bind="$attrs"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="3.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+    >
+        <!-- Speech Bubble (WhatsApp style) -->
+        <path d="M38.5 21.5C38.5 30.9 30.9 38.5 21.5 38.5C17.8 38.5 14.4 37.3 11.6 35.3L5 37.5L7.2 31.7C5.2 28.9 4 25.4 4 21.5C4 12.1 11.6 4.5 21.5 4.5C30.9 4.5 38.5 12.1 38.5 21.5Z" />
+        
+        <!-- Elegant letter 'R' monogram inside -->
+        <path d="M16 13.5H23.5C25.7 13.5 27.5 15.3 27.5 17.5C27.5 19.7 25.7 21.5 23.5 21.5H19.5V28.5" />
+        <path d="M16 13.5V28.5" />
+        <path d="M23.5 21.5L28.5 28.5" />
     </svg>
 </template>
