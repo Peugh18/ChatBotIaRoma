@@ -64,6 +64,8 @@ WhatsApp → roma-api → POST /api/roma/messages
 
 Documentación detallada: `.agents/skills/roma-sales-bot/SKILL.md`
 
+**Contexto del proyecto (flujo, requisitos, prohibiciones):** [`docs/CONTEXTO_PROYECTO.md`](docs/CONTEXTO_PROYECTO.md) · [Guía rápida](docs/VESTIDOS_ROMA_GUIA.md)
+
 ## Reconocimiento visual (Voyage AI)
 
 Cuando un cliente envía una foto en un live, el bot puede buscar por **similitud visual** usando embeddings Voyage multimodal:
