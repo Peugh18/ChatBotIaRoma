@@ -1,11 +1,26 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import PageHeader from '@/components/crm/PageHeader.vue';
+import CrmPanel from '@/components/crm/CrmPanel.vue';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { type BreadcrumbItem } from '@/types';
 import { apiJson, ApiError } from '@/composables/useApi';
 import { Head } from '@inertiajs/vue3';
-import { ref, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
+import { 
+    Search, 
+    Plus, 
+    MapPin, 
+    TrendingUp, 
+    Truck, 
+    Edit, 
+    Trash2, 
+    ChevronLeft, 
+    ChevronRight, 
+    Sparkles 
+} from 'lucide-vue-next';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -32,6 +47,11 @@ const form = ref({
     cost_shalom: 0,
 });
 
+// Search and Pagination State
+const searchQuery = ref('');
+const currentPage = ref(1);
+const itemsPerPage = 10;
+
 const initialDistricts = [
     'Cercado de Lima', 'Breña', 'Jesús María', 'La Victoria', 'Lince',
     'Magdalena del Mar', 'Miraflores', 'Pueblo Libre', 'Rímac', 'San Borja',
@@ -53,6 +73,30 @@ const fetchDeliveryZones = async () => {
         loading.value = false;
     }
 };
+
+// Filter zones based on search query
+const filteredZones = computed(() => {
+    if (!searchQuery.value) return deliveryZones.value;
+    return deliveryZones.value.filter((zone) =>
+        zone.district.toLowerCase().includes(searchQuery.value.toLowerCase())
+    );
+});
+
+// Calculate total pages
+const totalPages = computed(() => {
+    return Math.max(1, Math.ceil(filteredZones.value.length / itemsPerPage));
+});
+
+// Paginate filtered zones
+const paginatedZones = computed(() => {
+    const start = (currentPage.value - 1) * itemsPerPage;
+    return filteredZones.value.slice(start, start + itemsPerPage);
+});
+
+// Reset page to 1 when search query changes
+watch(searchQuery, () => {
+    currentPage.value = 1;
+});
 
 const openCreateModal = () => {
     editingZone.value = null;
@@ -141,125 +185,196 @@ onMounted(() => {
                 <template #actions>
                     <div class="flex flex-wrap gap-2">
                         <Button variant="secondary" @click="importDefaultZones">Importar por defecto</Button>
-                        <Button @click="openCreateModal">Nueva zona</Button>
+                        <Button @click="openCreateModal">
+                            <Plus class="mr-1.5 h-4 w-4" />
+                            Nueva zona
+                        </Button>
                     </div>
                 </template>
             </PageHeader>
 
             <div
                 v-if="error"
-                class="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+                class="mb-6 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive animate-fade-in"
                 role="alert"
             >
                 {{ error }}
             </div>
 
-            <div class="mt-8 flow-root">
-                <div class="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
-                    <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
-                        <div v-if="loading" class="text-center py-12">
-                            <p class="text-gray-500 dark:text-gray-400">Cargando...</p>
-                        </div>
-                        <div v-else-if="deliveryZones.length === 0" class="text-center py-12">
-                            <p class="text-gray-500 dark:text-gray-400">No hay zonas de delivery configuradas</p>
-                        </div>
-                        <table v-else class="min-w-full divide-y divide-gray-300 dark:divide-gray-700">
-                            <thead>
-                                <tr>
-                                    <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 dark:text-white sm:pl-0">Distrito</th>
-                                    <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">Motorizado (S/)</th>
-                                    <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">Shalom (S/)</th>
-                                    <th scope="col" class="relative py-3.5 pl-3 pr-4 sm:pr-0">
-                                        <span class="sr-only">Acciones</span>
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                                <tr v-for="zone in deliveryZones" :key="zone.id">
-                                    <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 dark:text-white sm:pl-0">
-                                        {{ zone.district }}
-                                    </td>
-                                    <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
-                                        S/ {{ zone.cost_motorizado }}
-                                    </td>
-                                    <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
-                                        S/ {{ zone.cost_shalom }}
-                                    </td>
-                                    <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-0">
-                                        <button @click="openEditModal(zone)" class="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300 mr-4">Editar</button>
-                                        <button @click="deleteZone(zone.id)" class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300">Eliminar</button>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+            <!-- Search and Table Container -->
+            <div class="space-y-4">
+                <div class="flex items-center justify-between gap-4 flex-wrap">
+                    <div class="relative w-full max-w-xs">
+                        <Search class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input v-model="searchQuery" placeholder="Buscar distrito..." class="pl-9" />
                     </div>
                 </div>
+
+                <CrmPanel noPadding>
+                    <div v-if="loading" class="text-center py-20">
+                        <p class="text-sm text-muted-foreground">Cargando tarifas de delivery...</p>
+                    </div>
+                    
+                    <div v-else-if="filteredZones.length === 0" class="text-center py-20">
+                        <p class="text-sm text-muted-foreground">No se encontraron zonas de delivery</p>
+                    </div>
+
+                    <div v-else>
+                        <div class="overflow-x-auto">
+                            <table class="crm-table">
+                                <thead>
+                                    <tr>
+                                        <th>Distrito</th>
+                                        <th>Costo Motorizado</th>
+                                        <th>Costo Shalom</th>
+                                        <th class="text-right !text-right">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-border">
+                                    <tr v-for="zone in paginatedZones" :key="zone.id">
+                                        <td class="font-medium text-foreground">
+                                            <div class="flex items-center gap-2">
+                                                <MapPin class="h-4 w-4 text-primary" />
+                                                <span>{{ zone.district }}</span>
+                                            </div>
+                                        </td>
+                                        <td class="text-muted-foreground">
+                                            <div class="flex items-center gap-1.5">
+                                                <Truck class="h-4 w-4 text-muted-foreground/75" />
+                                                <span>S/ {{ Number(zone.cost_motorizado).toFixed(2) }}</span>
+                                            </div>
+                                        </td>
+                                        <td class="text-muted-foreground">
+                                            <div class="flex items-center gap-1.5">
+                                                <TrendingUp class="h-4 w-4 text-muted-foreground/75" />
+                                                <span>S/ {{ Number(zone.cost_shalom).toFixed(2) }}</span>
+                                            </div>
+                                        </td>
+                                        <td class="text-right">
+                                            <div class="flex justify-end gap-1.5">
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="sm" 
+                                                    class="h-8 px-2 text-primary hover:text-primary hover:bg-primary/10" 
+                                                    @click="openEditModal(zone)"
+                                                >
+                                                    <Edit class="h-3.5 w-3.5" />
+                                                    <span class="sr-only">Editar</span>
+                                                </Button>
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="sm" 
+                                                    class="h-8 px-2 text-destructive hover:text-destructive hover:bg-destructive/10" 
+                                                    @click="deleteZone(zone.id)"
+                                                >
+                                                    <Trash2 class="h-3.5 w-3.5" />
+                                                    <span class="sr-only">Eliminar</span>
+                                                </Button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Pagination Footer -->
+                        <div class="flex items-center justify-between border-t border-border px-5 py-4 bg-muted/10 flex-wrap gap-4">
+                            <div class="text-xs text-muted-foreground">
+                                Mostrando <span class="font-semibold">{{ Math.min(filteredZones.length, (currentPage - 1) * itemsPerPage + 1) }}</span> a <span class="font-semibold">{{ Math.min(filteredZones.length, currentPage * itemsPerPage) }}</span> de <span class="font-semibold">{{ filteredZones.length }}</span> distritos
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <Button 
+                                    variant="outline" 
+                                    size="icon"
+                                    class="h-8 w-8"
+                                    :disabled="currentPage === 1" 
+                                    @click="currentPage--"
+                                >
+                                    <ChevronLeft class="h-4 w-4" />
+                                    <span class="sr-only">Anterior</span>
+                                </Button>
+                                
+                                <Button 
+                                    v-for="page in totalPages" 
+                                    :key="page" 
+                                    size="sm" 
+                                    class="h-8 w-8 p-0"
+                                    :variant="currentPage === page ? 'default' : 'outline'"
+                                    @click="currentPage = page"
+                                >
+                                    {{ page }}
+                                </Button>
+                                
+                                <Button 
+                                    variant="outline" 
+                                    size="icon"
+                                    class="h-8 w-8"
+                                    :disabled="currentPage === totalPages" 
+                                    @click="currentPage++"
+                                >
+                                    <ChevronRight class="h-4 w-4" />
+                                    <span class="sr-only">Siguiente</span>
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </CrmPanel>
             </div>
         </div>
 
         <!-- Modal para crear/editar zona -->
-        <div v-if="showCreateModal" class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-            <div class="flex min-h-screen items-end justify-center p-4 text-center sm:items-center sm:p-0">
-                <div class="relative transform overflow-hidden rounded-lg bg-white dark:bg-gray-800 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
-                    <div class="px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
-                        <h3 class="text-lg font-semibold leading-6 text-gray-900 dark:text-white" id="modal-title">
-                            {{ editingZone ? 'Editar Zona' : 'Nueva Zona' }}
-                        </h3>
-                        <div class="mt-4 space-y-4">
-                            <div>
-                                <label for="district" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Distrito</label>
-                                <input
-                                    type="text"
-                                    id="district"
-                                    v-model="form.district"
-                                    list="districts-list"
-                                    class="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 dark:bg-gray-700 sm:text-sm sm:leading-6"
-                                    placeholder="Nombre del distrito"
-                                />
-                                <datalist id="districts-list">
-                                    <option v-for="district in initialDistricts" :key="district" :value="district" />
-                                </datalist>
-                            </div>
-                            <div>
-                                <label for="cost-motorizado" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Costo Motorizado (S/)</label>
-                                <input
-                                    type="number"
-                                    id="cost-motorizado"
-                                    v-model="form.cost_motorizado"
-                                    step="0.01"
-                                    min="0"
-                                    class="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 dark:bg-gray-700 sm:text-sm sm:leading-6"
-                                />
-                            </div>
-                            <div>
-                                <label for="cost-shalom" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Costo Shalom (S/)</label>
-                                <input
-                                    type="number"
-                                    id="cost-shalom"
-                                    v-model="form.cost_shalom"
-                                    step="0.01"
-                                    min="0"
-                                    class="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 dark:bg-gray-700 sm:text-sm sm:leading-6"
-                                />
-                            </div>
-                        </div>
+        <div v-if="showCreateModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+            <div class="w-full max-w-md overflow-hidden rounded-xl border border-border bg-card shadow-lg animate-in fade-in zoom-in-95 duration-200">
+                <div class="border-b border-border bg-muted/30 px-6 py-4">
+                    <h3 class="text-lg font-semibold text-foreground">
+                        {{ editingZone ? 'Editar zona de delivery' : 'Nueva zona de delivery' }}
+                    </h3>
+                </div>
+                
+                <div class="p-6 space-y-4">
+                    <div class="space-y-1.5">
+                        <Label for="district">Distrito</Label>
+                        <Input
+                            id="district"
+                            v-model="form.district"
+                            list="districts-list"
+                            placeholder="Ej: Miraflores"
+                        />
+                        <datalist id="districts-list">
+                            <option v-for="district in initialDistricts" :key="district" :value="district" />
+                        </datalist>
                     </div>
-                    <div class="px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
-                        <button
-                            type="button"
-                            @click="saveZone"
-                            class="inline-flex w-full justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 sm:ml-3 sm:w-auto"
-                        >
-                            {{ editingZone ? 'Actualizar' : 'Crear' }}
-                        </button>
-                        <button
-                            type="button"
-                            @click="showCreateModal = false; editingZone = null"
-                            class="mt-3 inline-flex w-full justify-center rounded-md bg-white dark:bg-gray-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 sm:mt-0 sm:w-auto"
-                        >
-                            Cancelar
-                        </button>
+                    
+                    <div class="space-y-1.5">
+                        <Label for="cost-motorizado">Costo Motorizado (S/)</Label>
+                        <Input
+                            type="number"
+                            id="cost-motorizado"
+                            v-model="form.cost_motorizado"
+                            step="0.01"
+                            min="0"
+                        />
                     </div>
+                    
+                    <div class="space-y-1.5">
+                        <Label for="cost-shalom">Costo Shalom (S/)</Label>
+                        <Input
+                            type="number"
+                            id="cost-shalom"
+                            v-model="form.cost_shalom"
+                            step="0.01"
+                            min="0"
+                        />
+                    </div>
+                </div>
+                
+                <div class="flex items-center justify-end gap-3 border-t border-border bg-muted/10 px-6 py-4">
+                    <Button variant="outline" @click="showCreateModal = false; editingZone = null">
+                        Cancelar
+                    </Button>
+                    <Button @click="saveZone">
+                        {{ editingZone ? 'Actualizar' : 'Crear' }}
+                    </Button>
                 </div>
             </div>
         </div>
