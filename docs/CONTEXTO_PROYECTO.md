@@ -548,6 +548,7 @@ php artisan catalog:index-embeddings
 
 | Documento | Uso |
 |-----------|-----|
+| `docs/PLAN_Y_CONTEXTO.md` | **Plan activo + memoria** — qué hacer ahora |
 | `docs/CONTEXTO_PROYECTO.md` | **Este archivo** — contexto completo |
 | `docs/VESTIDOS_ROMA_GUIA.md` | Guía operativa resumida |
 | `app/Ventas/README.md` | Arquitectura módulo Ventas |

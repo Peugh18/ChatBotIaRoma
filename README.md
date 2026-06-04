@@ -64,7 +64,7 @@ WhatsApp → roma-api → POST /api/roma/messages
 
 Documentación detallada: `.agents/skills/roma-sales-bot/SKILL.md`
 
-**Contexto del proyecto (flujo, requisitos, prohibiciones):** [`docs/CONTEXTO_PROYECTO.md`](docs/CONTEXTO_PROYECTO.md) · [Guía rápida](docs/VESTIDOS_ROMA_GUIA.md)
+**Plan y contexto (empezar aquí):** [`docs/PLAN_Y_CONTEXTO.md`](docs/PLAN_Y_CONTEXTO.md) · [Contexto completo](docs/CONTEXTO_PROYECTO.md) · [Guía rápida](docs/VESTIDOS_ROMA_GUIA.md)
 
 ## Reconocimiento visual (Voyage AI)
 

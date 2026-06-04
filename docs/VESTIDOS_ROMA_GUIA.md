@@ -1,7 +1,7 @@
 # Vestidos Roma — Guía rápida
 
-> **Documento maestro del proyecto:** [`CONTEXTO_PROYECTO.md`](./CONTEXTO_PROYECTO.md)  
-> Ahí está **todo**: visión, requisitos, prohibiciones, flujos completos (cliente, bot, asesor), arquitectura, estados y operación.
+> **Plan + qué hacer ahora:** [`PLAN_Y_CONTEXTO.md`](./PLAN_Y_CONTEXTO.md)  
+> **Documento maestro (detalle):** [`CONTEXTO_PROYECTO.md`](./CONTEXTO_PROYECTO.md)
 
 Esta guía es un **resumen operativo** para el día a día.
 
