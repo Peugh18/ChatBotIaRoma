@@ -4,6 +4,7 @@ namespace App\Ventas\Manejadores;
 
 use App\Models\ConversationState;
 use App\Models\Customer;
+use App\Services\ServicioConfigNegocio;
 use App\Services\ServicioEscalamientoHumano;
 use App\Ventas\Constructores\ConstructorInteractivos;
 use App\Ventas\Constructores\ConstructorMensaje;
@@ -31,8 +32,13 @@ class ManejadorRespuestasTransversales
         Customer $cliente,
         string $mensaje,
         ?callable $mostrarCategorias,
+        ?callable $mostrarOtrasCategorias = null,
     ): ?RespuestaBot {
         $m = trim($mensaje);
+
+        if ($this->esOtrasCategorias($m) && $mostrarOtrasCategorias !== null) {
+            return $mostrarOtrasCategorias();
+        }
 
         if ($this->quiereReiniciar($m)) {
             if ($this->maquina->carrito($estado) !== []) {
@@ -214,7 +220,7 @@ class ManejadorRespuestasTransversales
     {
         $m = mb_strtolower($mensaje);
         if (str_contains($m, 'yape')) {
-            $config = app(\App\Services\ServicioConfigNegocio::class);
+            $config = app(ServicioConfigNegocio::class);
 
             return RespuestaBot::texto($config->yapePaymentMessage());
         }
@@ -245,8 +251,20 @@ class ManejadorRespuestasTransversales
         return str_contains($m, 'carrito') || str_contains($m, 'ver carrito');
     }
 
+    public function esOtrasCategorias(string $mensaje): bool
+    {
+        $m = mb_strtolower(trim($mensaje));
+        $sinTildes = str_replace(['í', 'á'], ['i', 'a'], $m);
+
+        return in_array($sinTildes, ['otras categorias', 'other_categories'], true);
+    }
+
     public function quiereCategorias(string $mensaje): bool
     {
+        if ($this->esOtrasCategorias($mensaje)) {
+            return false;
+        }
+
         $m = mb_strtolower(trim($mensaje));
 
         return preg_match('/\b(categorias|categorías|ver categorias|catalogo|catálogo)\b/u', $m) === 1;

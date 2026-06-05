@@ -14,7 +14,6 @@ use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProductoSimilarController;
 use App\Http\Controllers\Api\ProductVariantPhotoController;
-use App\Http\Controllers\Api\SedeShalomController;
 use App\Http\Controllers\Api\RomaSyncController;
 use App\Http\Middleware\RateLimitTools;
 use Illuminate\Support\Facades\Route;
@@ -40,11 +39,11 @@ Route::middleware(['web', 'auth'])->group(function () {
     Route::post('product-variants/{variant}/photo', [ProductVariantPhotoController::class, 'store']);
     Route::apiResource('categories', CategoryController::class);
     Route::apiResource('delivery-zones', DeliveryZoneController::class);
-    Route::apiResource('sedes-shalom', SedeShalomController::class)->except(['show']);
     Route::get('products/{product}/similares', [ProductoSimilarController::class, 'show']);
     Route::put('products/{product}/similares', [ProductoSimilarController::class, 'update']);
     Route::apiResource('customers', CustomerController::class);
     Route::apiResource('orders', OrderController::class);
+    Route::post('orders/{order}/marcar-enviado', [OrderController::class, 'marcarEnviado']);
     Route::get('dashboard-stats', [OrderController::class, 'getStats']);
     Route::get('payment-validation-queue', [OrderController::class, 'paymentValidationQueue']);
     Route::post('bot-debug/simulate', [BotFlowDebugController::class, 'simulate']);
@@ -65,4 +64,5 @@ Route::middleware(['web', 'auth'])->group(function () {
     Route::post('/conversations/{phone}/mode', [RomaSyncController::class, 'setMode']);
     Route::get('/conversations/{phone}/sales-context', [ConversationSalesContextController::class, 'show']);
     Route::post('/conversations/{phone}/validate-payment', [RomaSyncController::class, 'validatePayment']);
+    Route::post('/conversations/{phone}/send-card-payment-link', [RomaSyncController::class, 'sendCardPaymentLink']);
 });

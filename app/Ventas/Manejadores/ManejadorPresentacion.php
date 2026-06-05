@@ -3,6 +3,7 @@
 namespace App\Ventas\Manejadores;
 
 use App\Models\ConversationState;
+use App\Models\Customer;
 use App\Models\Product;
 use App\Services\ServicioMediaProducto;
 use App\Ventas\Constructores\ConstructorInteractivos;
@@ -11,6 +12,7 @@ use App\Ventas\Contratos\RespuestaBot;
 use App\Ventas\MaquinaEstados\EtapaVentas;
 use App\Ventas\MaquinaEstados\MaquinaEstadosVentas;
 use App\Ventas\Repositorios\RepositorioCatalogo;
+use App\Ventas\Servicios\ServicioCarrito;
 
 class ManejadorPresentacion
 {
@@ -20,6 +22,7 @@ class ManejadorPresentacion
         protected MaquinaEstadosVentas $maquina,
         protected RepositorioCatalogo $catalogo,
         protected ServicioMediaProducto $media,
+        protected ServicioCarrito $carrito,
     ) {}
 
     public function mostrarProducto(ConversationState $estado, Product $producto): RespuestaBot
@@ -162,13 +165,7 @@ class ManejadorPresentacion
         $this->maquina->guardarCarrito($estado, $carrito);
 
         $texto = $this->mensajes->plantilla('talla_confirmada', ['talla' => $tallaNorm])."\n\n".
-            $this->mensajes->plantilla('linea_carrito', [
-                'producto' => $producto->name,
-                'color' => $color,
-                'talla' => $tallaNorm,
-                'precio' => number_format($linea['precio'], 0),
-            ])."\n\n".
-            $this->mensajes->plantilla('pregunta_mas_o_confirmar');
+            $this->textoCarritoMasOConfirmar($estado);
 
         $payload = $this->interactivos->construir($texto, [
             ['id' => 'add_more_product', 'title' => 'Agregar otro'],
@@ -182,16 +179,7 @@ class ManejadorPresentacion
 
     public function reMostrarMasOConfirmar(ConversationState $estado): RespuestaBot
     {
-        $carrito = $this->maquina->carrito($estado);
-        $ultima = $carrito !== [] ? $carrito[array_key_last($carrito)] : null;
-        $texto = $ultima
-            ? $this->mensajes->plantilla('linea_carrito', [
-                'producto' => $ultima['nombre'] ?? '',
-                'color' => $ultima['color'] ?? '',
-                'talla' => $ultima['talla'] ?? '',
-                'precio' => number_format((float) ($ultima['precio'] ?? 0), 0),
-            ])."\n\n".$this->mensajes->plantilla('pregunta_mas_o_confirmar')
-            : $this->mensajes->plantilla('pregunta_mas_o_confirmar');
+        $texto = $this->textoCarritoMasOConfirmar($estado);
 
         $payload = $this->interactivos->construir($texto, [
             ['id' => 'add_more_product', 'title' => 'Agregar otro'],
@@ -203,13 +191,40 @@ class ManejadorPresentacion
 
     public function masProductos(ConversationState $estado): RespuestaBot
     {
-        $ctx = $estado->context ?? [];
-        $catId = (int) ($ctx['categoria_actual_id'] ?? 0);
-        if ($catId < 1) {
-            return RespuestaBot::texto($this->mensajes->plantilla('agregar_otro_intro'));
+        $cliente = $estado->customer_id
+            ? Customer::find($estado->customer_id)
+            : null;
+
+        return app(ManejadorInicio::class)->mostrarCategorias($cliente, $estado, 0, 'agregar_otro');
+    }
+
+    protected function textoCarritoMasOConfirmar(ConversationState $estado): string
+    {
+        $lineasPrevias = $this->maquina->carrito($estado);
+        $revalidado = $this->carrito->revalidar($lineasPrevias);
+        if ($revalidado['cambio']) {
+            $this->maquina->guardarCarrito($estado, $revalidado['lineas']);
         }
 
-        return app(ManejadorNavegacion::class)->listarProductos($estado, $catId, 0);
+        $lineas = $revalidado['lineas'];
+        if ($lineas === []) {
+            return $this->mensajes->plantilla('pregunta_mas_o_confirmar');
+        }
+
+        $textoLineas = [];
+        foreach ($lineas as $l) {
+            $textoLineas[] = $this->mensajes->plantilla('linea_carrito', [
+                'producto' => $l['nombre'] ?? '',
+                'color' => $l['color'] ?? '',
+                'talla' => $l['talla'] ?? '',
+                'precio' => number_format((float) ($l['precio'] ?? 0), 0),
+            ]);
+        }
+
+        return $this->mensajes->plantilla('carrito_resumen', [
+            'lineas' => implode("\n", $textoLineas),
+            'subtotal' => number_format($revalidado['subtotal'], 0),
+        ])."\n\n".$this->mensajes->plantilla('pregunta_mas_o_confirmar');
     }
 
     public function mostrarSimilaresDe(ConversationState $estado, Product $producto): RespuestaBot

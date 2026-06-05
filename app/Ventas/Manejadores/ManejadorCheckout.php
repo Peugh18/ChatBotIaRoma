@@ -5,9 +5,8 @@ namespace App\Ventas\Manejadores;
 use App\Models\ConversationState;
 use App\Models\Customer;
 use App\Services\ServicioConfigNegocio;
-use App\Services\ServicioEscalamientoHumano;
+use App\Services\ServicioLinkPagoTarjeta;
 use App\Ventas\Constructores\ConstructorInteractivos;
-use App\Ventas\Constructores\PaginadorListasWhatsapp;
 use App\Ventas\Constructores\ConstructorMensaje;
 use App\Ventas\Contratos\RespuestaBot;
 use App\Ventas\MaquinaEstados\EtapaVentas;
@@ -26,7 +25,6 @@ class ManejadorCheckout
         protected RepositorioPedidos $pedidos,
         protected ServicioCarrito $carrito,
         protected ServicioConfigNegocio $config,
-        protected PaginadorListasWhatsapp $paginador,
     ) {}
 
     public function iniciarDesdeCarrito(ConversationState $estado, Customer $cliente): RespuestaBot
@@ -64,33 +62,18 @@ class ManejadorCheckout
             ));
         }
 
-        if ($m === 'shipping_motorizado' || $m === 'envio_motorizado') {
-            $this->maquina->guardarDatosEnvio($estado, ['metodo' => 'motorizado']);
+        if ($etapa === EtapaVentas::ESPERANDO_LINK_TARJETA) {
+            return RespuestaBot::texto($this->mensajes->plantilla('tarjeta_espera_link'));
+        }
 
-            return $this->pedirCampo($estado, 'distrito');
+        if ($m === 'shipping_motorizado' || $m === 'envio_motorizado') {
+            $this->prepararMetodo($estado, 'motorizado');
+
+            return $this->pedirCampo($estado, 'distrito', $cliente, $this->textoIntroMotorizado($estado));
         }
 
         if ($m === 'shipping_shalom' || $m === 'envio_shalom') {
-            $this->maquina->guardarDatosEnvio($estado, ['metodo' => 'shalom']);
-
-            return $this->preguntarSedeShalom($estado);
-        }
-
-        if (preg_match('/^page_shalom_(\d+)$/', $m, $match)) {
-            return $this->preguntarSedeShalom($estado, (int) $match[1]);
-        }
-
-        if (preg_match('/^pick_shalom_(\d+)$/', $m, $match)) {
-            $sedeId = (int) $match[1];
-            $sede = $this->envios->sedesShalomActivas()->firstWhere('id', $sedeId);
-            $costo = $this->envios->costoShalomPorSede($sedeId);
-            $this->maquina->guardarDatosEnvio($estado, [
-                'sede_shalom_id' => $sedeId,
-                'distrito' => $sede?->nombre ?? 'Shalom',
-            ]);
-            $this->maquina->guardarCostoEnvio($estado, $costo);
-
-            return $this->pedirCampo($estado, 'nombre', $cliente);
+            return $this->iniciarDatosShalom($estado, $cliente);
         }
 
         if ($m === 'same_data_yes' || $m === 'si mismos datos') {
@@ -103,12 +86,7 @@ class ManejadorCheckout
             $metodo = $datos['metodo'] ?? '';
             $costo = 0.0;
             if ($metodo === 'shalom') {
-                $sedeId = (int) ($datos['sede_shalom_id'] ?? 0);
-                if ($sedeId > 0) {
-                    $costo = $this->envios->costoShalomPorSede($sedeId);
-                } else {
-                    $costo = $this->envios->costoShalomPorSede(null, 'provincia');
-                }
+                $costo = $this->envios->costoShalom('provincia');
             } else {
                 $zona = $this->envios->resolverDistrito($datos['distrito'] ?? '');
                 $costo = $this->envios->costoMotorizado($zona);
@@ -119,6 +97,8 @@ class ManejadorCheckout
         }
 
         if ($m === 'update_data' || $m === 'actualizar datos') {
+            $this->maquina->limpiarDatosEnvio($estado);
+
             return $this->preguntarMetodoEnvio($estado);
         }
 
@@ -232,34 +212,12 @@ class ManejadorCheckout
         return RespuestaBot::conInteractivo('', $payload);
     }
 
-    protected function preguntarSedeShalom(ConversationState $estado, int $pagina = 0): RespuestaBot
+    protected function iniciarDatosShalom(ConversationState $estado, Customer $cliente): RespuestaBot
     {
-        $sedes = $this->envios->sedesShalomActivas();
-        if ($sedes->isEmpty()) {
-            $costo = $this->envios->costoShalomPorSede(null, 'provincia');
-            $this->maquina->guardarCostoEnvio($estado, $costo);
+        $this->prepararMetodo($estado, 'shalom');
+        $this->maquina->guardarCostoEnvio($estado, $this->envios->costoShalom('provincia'));
 
-            return $this->pedirCampo($estado, 'nombre');
-        }
-
-        $todas = [];
-        foreach ($sedes as $sede) {
-            $todas[] = [
-                'id' => 'pick_shalom_'.$sede->id,
-                'title' => mb_substr($sede->nombre, 0, 24),
-                'description' => 'S/'.number_format((float) $sede->costo, 0),
-            ];
-        }
-
-        $pag = $this->paginador->pagina($todas, $pagina, 'page_shalom');
-        $cuerpo = $pagina === 0
-            ? $this->mensajes->plantilla('envio_elige_sede')
-            : $this->mensajes->plantilla('lista_pagina_siguiente', ['pagina' => (string) ($pagina + 1)]);
-
-        $payload = $this->interactivos->construir($cuerpo, $pag['opciones']);
-        $this->maquina->establecerCheckoutPaso($estado, 'sede_shalom');
-
-        return RespuestaBot::conInteractivo('', $payload);
+        return $this->pedirCampo($estado, 'sede_shalom', $cliente, $this->textoIntroShalom($estado));
     }
 
     /**
@@ -267,11 +225,22 @@ class ManejadorCheckout
      */
     protected function preguntarReutilizarDatos(array $datos): RespuestaBot
     {
+        $metodo = (string) ($datos['metodo'] ?? '');
+        $envioLinea = $metodo === 'shalom'
+            ? 'Envío: Shalom'.(isset($datos['distrito']) ? " · {$datos['distrito']}\n" : "\n")
+            : 'Envío: Motorizado'.(isset($datos['distrito']) ? " · {$datos['distrito']}\n" : "\n");
+
         $payload = $this->interactivos->construir(
             $this->mensajes->plantilla('datos_guardados_intro', [
+                'envio_linea' => $envioLinea,
                 'nombre_linea' => isset($datos['nombre']) ? "Nombre: {$datos['nombre']}\n" : '',
                 'celular_linea' => isset($datos['celular']) ? "Celular: {$datos['celular']}\n" : '',
-                'direccion_linea' => isset($datos['direccion']) ? "Dirección: {$datos['direccion']}\n" : '',
+                'direccion_linea' => ($metodo === 'motorizado' && isset($datos['direccion']))
+                    ? "Dirección: {$datos['direccion']}\n"
+                    : '',
+                'dni_linea' => ($metodo === 'shalom' && isset($datos['dni']))
+                    ? "DNI: {$datos['dni']}\n"
+                    : '',
             ]),
             [
                 ['id' => 'same_data_yes', 'title' => 'Mismos datos'],
@@ -282,24 +251,85 @@ class ManejadorCheckout
         return RespuestaBot::conInteractivo('', $payload);
     }
 
-    protected function pedirCampo(ConversationState $estado, string $campo, ?Customer $cliente = null): RespuestaBot
-    {
+    protected function pedirCampo(
+        ConversationState $estado,
+        string $campo,
+        ?Customer $cliente = null,
+        ?string $prefijo = null
+    ): RespuestaBot {
         $this->maquina->establecer($estado, EtapaVentas::ENVIO_DATOS);
         $this->maquina->establecerCheckoutPaso($estado, $campo);
+        $metodo = (string) ($this->maquina->datosEnvio($estado)['metodo'] ?? '');
 
         if ($campo === 'nombre' && $cliente && trim((string) $cliente->name) !== '') {
             $this->maquina->guardarDatosEnvio($estado, ['nombre' => $cliente->name]);
 
-            return $this->pedirCampo($estado, 'celular', $cliente);
+            return $metodo === 'shalom'
+                ? $this->pedirCampo($estado, 'dni', $cliente)
+                : $this->pedirCampo($estado, 'celular', $cliente);
         }
 
         if ($campo === 'celular' && $cliente) {
-            $this->maquina->guardarDatosEnvio($estado, ['celular' => $cliente->phone_number]);
+            $tel = preg_replace('/\D/', '', (string) $cliente->phone_number);
+            if (strlen($tel) >= 9) {
+                $celular = strlen($tel) > 9 && str_starts_with($tel, '51')
+                    ? substr($tel, -9)
+                    : $tel;
+                $this->maquina->guardarDatosEnvio($estado, ['celular' => $celular]);
 
-            return $this->pedirCampo($estado, 'direccion', $cliente);
+                if ($metodo === 'shalom') {
+                    $this->maquina->establecerCheckoutPaso($estado, null);
+
+                    return $this->mostrarResumen($estado);
+                }
+
+                return $this->pedirCampo($estado, 'direccion', $cliente);
+            }
         }
 
-        return RespuestaBot::texto($this->mensajes->plantilla('checkout_pide_'.$campo));
+        $texto = $this->mensajes->plantilla('checkout_pide_'.$campo);
+        if ($prefijo !== null && $prefijo !== '') {
+            $texto = $prefijo."\n\n".$texto;
+        }
+
+        return RespuestaBot::texto($texto);
+    }
+
+    public function capturarUbicacion(ConversationState $estado, Customer $cliente, array $ubicacion): RespuestaBot
+    {
+        $metodo = (string) ($this->maquina->datosEnvio($estado)['metodo'] ?? '');
+        if ($metodo !== 'motorizado') {
+            return RespuestaBot::texto($this->mensajes->plantilla('ubicacion_fuera_envio'));
+        }
+
+        $this->maquina->guardarDatosEnvio($estado, [
+            'ubicacion_lat' => (float) ($ubicacion['lat'] ?? 0),
+            'ubicacion_lng' => (float) ($ubicacion['lng'] ?? 0),
+            'ubicacion_label' => isset($ubicacion['name']) ? (string) $ubicacion['name'] : null,
+        ]);
+
+        $paso = $this->maquina->checkoutPaso($estado);
+        if ($paso === 'ubicacion') {
+            $this->maquina->establecerCheckoutPaso($estado, null);
+
+            return $this->mostrarResumen($estado);
+        }
+
+        $datos = $this->maquina->datosEnvio($estado);
+        if ($this->tieneDatosCompletos($datos)) {
+            $this->maquina->establecerCheckoutPaso($estado, null);
+
+            return $this->mostrarResumen($estado);
+        }
+
+        if ($paso !== null) {
+            return RespuestaBot::texto(
+                $this->mensajes->plantilla('ubicacion_referencia_recibida')."\n\n"
+                .$this->mensajes->plantilla('checkout_pide_'.$paso)
+            );
+        }
+
+        return RespuestaBot::texto($this->mensajes->plantilla('ubicacion_referencia_recibida'));
     }
 
     protected function capturarCampo(
@@ -325,7 +355,7 @@ class ManejadorCheckout
         if ($paso === 'tarjeta_celular') {
             $this->maquina->guardarDatosEnvio($estado, ['tarjeta_celular' => $valor]);
             $revalidado = $this->carrito->revalidar($this->maquina->carrito($estado));
-            $this->pedidos->crearPendiente(
+            $pedido = $this->pedidos->crearPendiente(
                 $estado,
                 $cliente,
                 $revalidado['lineas'],
@@ -333,13 +363,15 @@ class ManejadorCheckout
                 $this->maquina->costoEnvio($estado),
                 'tarjeta'
             );
-            app(ServicioEscalamientoHumano::class)->escalar(
-                $estado,
-                'Cliente eligió pago con tarjeta — enviar link'
-            );
+            app(ServicioLinkPagoTarjeta::class)->marcarPendienteEnvio($estado);
+            $this->maquina->establecerCheckoutPaso($estado, null);
 
-            return RespuestaBot::texto($this->mensajes->plantilla('tarjeta_espera'))
-                ->marcarEscalamientoHumano();
+            $total = number_format((float) $pedido->amount_total, 0);
+
+            return RespuestaBot::texto($this->mensajes->plantilla('tarjeta_espera', [
+                'total' => $total,
+                'pedido' => (string) $pedido->id,
+            ]));
         }
 
         if ($paso === 'distrito') {
@@ -361,11 +393,45 @@ class ManejadorCheckout
                 $cliente->update(['name' => $valor]);
             }
 
+            $metodo = (string) ($this->maquina->datosEnvio($estado)['metodo'] ?? '');
+
+            return $metodo === 'shalom'
+                ? $this->pedirCampo($estado, 'dni', $cliente)
+                : $this->pedirCampo($estado, 'celular', $cliente);
+        }
+
+        if ($paso === 'sede_shalom') {
+            $sedeTexto = trim($valor);
+            if (mb_strlen($sedeTexto) < 3) {
+                return RespuestaBot::texto($this->mensajes->plantilla('checkout_pide_sede_shalom'));
+            }
+            $this->maquina->guardarDatosEnvio($estado, [
+                'distrito' => $sedeTexto,
+                'sede_shalom_texto' => $sedeTexto,
+            ]);
+
+            return $this->pedirCampo($estado, 'nombre', $cliente);
+        }
+
+        if ($paso === 'dni') {
+            $dni = preg_replace('/\D/', '', $valor) ?? '';
+            if (strlen($dni) !== 8) {
+                return RespuestaBot::texto($this->mensajes->plantilla('checkout_pide_dni_invalido'));
+            }
+            $this->maquina->guardarDatosEnvio($estado, ['dni' => $dni]);
+
             return $this->pedirCampo($estado, 'celular', $cliente);
         }
 
         if ($paso === 'celular') {
             $this->maquina->guardarDatosEnvio($estado, ['celular' => $valor]);
+            $metodo = (string) ($this->maquina->datosEnvio($estado)['metodo'] ?? '');
+
+            if ($metodo === 'shalom') {
+                $this->maquina->establecerCheckoutPaso($estado, null);
+
+                return $this->mostrarResumen($estado);
+            }
 
             return $this->pedirCampo($estado, 'direccion', $cliente);
         }
@@ -373,13 +439,15 @@ class ManejadorCheckout
         if ($paso === 'direccion') {
             $this->maquina->guardarDatosEnvio($estado, ['direccion' => $valor]);
 
-            return $this->pedirCampo($estado, 'referencia', $cliente);
+            return $this->pedirCampo($estado, 'ubicacion', $cliente);
         }
 
-        if ($paso === 'referencia') {
-            $this->maquina->guardarDatosEnvio($estado, [
-                'referencia' => $valor !== '' ? $valor : '-',
-            ]);
+        if ($paso === 'ubicacion') {
+            $coords = $this->parsearUbicacionTexto($valor);
+            if ($coords !== null) {
+                return $this->capturarUbicacion($estado, $cliente, $coords);
+            }
+            $this->maquina->guardarDatosEnvio($estado, ['ubicacion_texto' => $valor]);
             $this->maquina->establecerCheckoutPaso($estado, null);
 
             return $this->mostrarResumen($estado);
@@ -403,7 +471,7 @@ class ManejadorCheckout
             $color = trim($l['color'] ?? '-');
             $talla = trim($l['talla'] ?? '-');
             $precio = number_format((float) ($l['precio'] ?? 0), 0);
-            
+
             $lineas[] = "🛍️ *{$nombre}*\n   └ Color: {$color} | Talla: {$talla} | S/{$precio}";
         }
 
@@ -413,8 +481,7 @@ class ManejadorCheckout
             'subtotal' => number_format($revalidado['subtotal'], 0),
             'envio' => number_format($envio, 0),
             'total' => number_format($total, 0),
-            'distrito' => $datos['distrito'] ?? '',
-            'direccion' => $datos['direccion'] ?? '',
+            'envio_detalle' => $this->textoDetalleEnvio($datos),
         ]);
 
         $this->maquina->establecer($estado, EtapaVentas::RESUMEN);
@@ -432,7 +499,7 @@ class ManejadorCheckout
     {
         $lineas = $this->maquina->carrito($estado);
         if (count($lineas) === 0) {
-            return RespuestaBot::texto("Tu carrito está vacío.");
+            return RespuestaBot::texto('Tu carrito está vacío.');
         }
 
         $rows = [];
@@ -441,23 +508,23 @@ class ManejadorCheckout
             $color = trim($linea['color'] ?? '-');
             $talla = trim($linea['talla'] ?? '-');
             $precio = number_format((float) ($linea['precio'] ?? 0), 0);
-            
+
             $titleCorto = mb_substr($nombre, 0, 21);
             $desc = mb_substr("Color: {$color} | Talla: {$talla} | S/{$precio}", 0, 72);
-            
+
             $rows[] = [
-                'id' => 'rm_item_' . $idx,
-                'title' => '❌ ' . $titleCorto,
+                'id' => 'rm_item_'.$idx,
+                'title' => '❌ '.$titleCorto,
                 'description' => $desc,
             ];
         }
-        
+
         $rows[] = [
             'id' => 'add_more_product',
             'title' => '➕ Agregar producto',
             'description' => 'Ir al catálogo para sumar más cosas',
         ];
-        
+
         $rows[] = [
             'id' => 'cancel_edit_cart',
             'title' => 'Volver al resumen',
@@ -482,20 +549,21 @@ class ManejadorCheckout
         if (isset($lineas[$idx])) {
             unset($lineas[$idx]);
             $lineas = array_values($lineas);
-            
+
             $ctx = $estado->context ?? [];
             unset($ctx['ultimo_pedido_id'], $ctx['last_order_id']);
             $estado->context = $ctx;
             $estado->save();
-            
+
             $this->maquina->guardarCarrito($estado, $lineas);
-            
+
             if (count($lineas) === 0) {
                 $this->maquina->reiniciarCarrito($estado);
-                return RespuestaBot::texto("Tu carrito quedó vacío 🛒 Escribe *hola* para volver a ver el catálogo."); 
+
+                return RespuestaBot::texto('Tu carrito quedó vacío 🛒 Escribe *hola* para volver a ver el catálogo.');
             }
         }
-        
+
         return $this->mostrarResumen($estado);
     }
 
@@ -519,15 +587,123 @@ class ManejadorCheckout
      */
     protected function tieneDatosCompletos(array $datos): bool
     {
-        $base = isset($datos['nombre'], $datos['celular'], $datos['direccion'], $datos['metodo']);
-        if (! $base) {
+        $metodo = (string) ($datos['metodo'] ?? '');
+        if ($metodo === '' || ! isset($datos['nombre'], $datos['celular'])) {
             return false;
         }
 
-        if (($datos['metodo'] ?? '') === 'shalom') {
-            return isset($datos['distrito']) || isset($datos['sede_shalom_id']);
+        if ($metodo === 'shalom') {
+            return isset($datos['dni'])
+                && mb_strlen(trim((string) ($datos['distrito'] ?? ''))) >= 3;
         }
 
-        return isset($datos['distrito']);
+        return isset($datos['distrito'], $datos['direccion'])
+            && $this->tieneUbicacionMotorizado($datos);
+    }
+
+    /**
+     * @param  array<string, mixed>  $datos
+     */
+    protected function tieneUbicacionMotorizado(array $datos): bool
+    {
+        if (isset($datos['ubicacion_lat'], $datos['ubicacion_lng'])
+            && (float) $datos['ubicacion_lat'] !== 0.0) {
+            return true;
+        }
+
+        return isset($datos['ubicacion_texto']) && trim((string) $datos['ubicacion_texto']) !== '';
+    }
+
+    protected function prepararMetodo(ConversationState $estado, string $metodo): void
+    {
+        if ($metodo === 'motorizado') {
+            $this->maquina->quitarCamposEnvio($estado, [
+                'sede_shalom_id', 'sede_shalom_texto', 'dni', 'ubicacion_lat', 'ubicacion_lng', 'ubicacion_label', 'ubicacion_texto',
+            ]);
+        } else {
+            $this->maquina->quitarCamposEnvio($estado, [
+                'direccion', 'referencia', 'ubicacion_lat', 'ubicacion_lng', 'ubicacion_label', 'ubicacion_texto',
+            ]);
+        }
+        $this->maquina->guardarDatosEnvio($estado, ['metodo' => $metodo]);
+    }
+
+    protected function textoIntroMotorizado(ConversationState $estado): string
+    {
+        $intro = $this->mensajes->plantilla('envio_intro_motorizado', [
+            'horario_entregas' => (string) config('flujo_ventas.horario_entregas'),
+        ]);
+        $lineas = $this->textoLineasCarrito($estado);
+
+        return $lineas !== '' ? $intro."\n\n".$lineas : $intro;
+    }
+
+    protected function textoIntroShalom(ConversationState $estado): string
+    {
+        $intro = $this->mensajes->plantilla('envio_intro_shalom');
+        $lineas = $this->textoLineasCarrito($estado);
+
+        return $lineas !== '' ? $intro."\n\n".$lineas : $intro;
+    }
+
+    protected function textoLineasCarrito(ConversationState $estado): string
+    {
+        $revalidado = $this->carrito->revalidar($this->maquina->carrito($estado));
+        if ($revalidado['lineas'] === []) {
+            return '';
+        }
+
+        $lineas = [];
+        foreach ($revalidado['lineas'] as $l) {
+            $lineas[] = '· '.trim($l['nombre'] ?? 'Producto')
+                .' · '.trim($l['color'] ?? '-')
+                .' · Talla '.trim($l['talla'] ?? '-');
+        }
+
+        return $this->mensajes->plantilla('envio_lineas_pedido', [
+            'lineas' => implode("\n", $lineas),
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $datos
+     */
+    protected function textoDetalleEnvio(array $datos): string
+    {
+        if (($datos['metodo'] ?? '') === 'shalom') {
+            return $this->mensajes->plantilla('resumen_envio_shalom', [
+                'sede' => $datos['distrito'] ?? 'Shalom',
+                'dni' => $datos['dni'] ?? '-',
+            ]);
+        }
+
+        $ubicacion = '';
+        if (isset($datos['ubicacion_lat'], $datos['ubicacion_lng'])) {
+            $ubicacion = '📍 https://maps.google.com/?q='
+                .$datos['ubicacion_lat'].','.$datos['ubicacion_lng'];
+        } elseif (isset($datos['ubicacion_texto'])) {
+            $ubicacion = '📍 '.$datos['ubicacion_texto'];
+        }
+
+        return $this->mensajes->plantilla('resumen_envio_motorizado', [
+            'distrito' => $datos['distrito'] ?? '',
+            'direccion' => $datos['direccion'] ?? '',
+            'ubicacion_linea' => $ubicacion,
+        ]);
+    }
+
+    /**
+     * @return array{lat: float, lng: float, name?: string}|null
+     */
+    protected function parsearUbicacionTexto(string $valor): ?array
+    {
+        if (preg_match('/@(-?\d+\.\d+),(-?\d+\.\d+)/', $valor, $m) === 1) {
+            return ['lat' => (float) $m[1], 'lng' => (float) $m[2]];
+        }
+        if (preg_match('/q=(-?\d+\.\d+),(-?\d+\.\d+)/', $valor, $m) === 1) {
+            return ['lat' => (float) $m[1], 'lng' => (float) $m[2]];
+        }
+
+        return null;
     }
 }

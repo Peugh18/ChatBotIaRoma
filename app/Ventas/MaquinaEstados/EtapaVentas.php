@@ -34,6 +34,8 @@ final class EtapaVentas
 
     public const TARJETA_DATOS = 'tarjeta_datos';
 
+    public const ESPERANDO_LINK_TARJETA = 'esperando_link_tarjeta';
+
     public const CONFIRMAR_REINICIO = 'confirmar_reinicio';
 
     /** Legacy */
@@ -53,6 +55,7 @@ final class EtapaVentas
         'awaiting_payment_proof' => self::COMPROBANTE,
         'awaiting_payment_validation' => self::VALIDACION_PAGO,
         'awaiting_card_details' => self::TARJETA_DATOS,
+        'awaiting_card_payment_link' => self::ESPERANDO_LINK_TARJETA,
         'envio_metodo' => self::ENVIO_METODO,
         'envio_datos' => self::ENVIO_DATOS,
         'resumen' => self::RESUMEN,

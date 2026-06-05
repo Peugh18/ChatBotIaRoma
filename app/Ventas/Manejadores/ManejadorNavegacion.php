@@ -2,10 +2,12 @@
 
 namespace App\Ventas\Manejadores;
 
+use App\Models\Category;
 use App\Models\ConversationState;
+use App\Models\Customer;
 use App\Ventas\Constructores\ConstructorInteractivos;
-use App\Ventas\Constructores\PaginadorListasWhatsapp;
 use App\Ventas\Constructores\ConstructorMensaje;
+use App\Ventas\Constructores\PaginadorListasWhatsapp;
 use App\Ventas\Contratos\RespuestaBot;
 use App\Ventas\MaquinaEstados\EtapaVentas;
 use App\Ventas\MaquinaEstados\MaquinaEstadosVentas;
@@ -33,14 +35,22 @@ class ManejadorNavegacion
         return $this->listarProductos($estado, $categoriaId, 0);
     }
 
-    public function listarProductos(ConversationState $estado, int $categoriaId, int $pagina = 0): RespuestaBot
-    {
+    public function listarProductos(
+        ConversationState $estado,
+        int $categoriaId,
+        int $pagina = 0,
+        ?int $excluirProductoId = null,
+        ?string $introClave = null
+    ): RespuestaBot {
         $productos = $this->catalogo->productosVisiblesDeCategoria($categoriaId);
+        if ($excluirProductoId !== null && $excluirProductoId > 0) {
+            $productos = $productos->filter(fn ($p) => (int) $p->id !== $excluirProductoId)->values();
+        }
         if ($productos->isEmpty()) {
             return RespuestaBot::texto($this->mensajes->plantilla('sin_datos_bd'));
         }
 
-        $categoria = \App\Models\Category::find($categoriaId);
+        $categoria = Category::find($categoriaId);
 
         $todas = [];
         foreach ($productos as $p) {
@@ -75,8 +85,9 @@ class ManejadorNavegacion
         }
 
         $nombreCat = $categoria?->name ?? 'esta categoría';
+        $intro = $introClave ?? 'lista_productos_intro';
         $cuerpo = $pagina === 0
-            ? $this->mensajes->plantilla('lista_productos_intro', ['categoria' => $nombreCat])
+            ? $this->mensajes->plantilla($intro, ['categoria' => $nombreCat])
             : $this->mensajes->plantilla('lista_pagina_siguiente', ['pagina' => (string) ($pagina + 1)]);
         $payload = $this->interactivos->construir(
             $cuerpo,
@@ -105,18 +116,25 @@ class ManejadorNavegacion
         return $this->presentacion->mostrarProducto($estado, $producto);
     }
 
-    public function otrasCategorias(?\App\Models\Customer $cliente, ConversationState $estado): RespuestaBot
+    public function otrasCategorias(?Customer $cliente, ConversationState $estado): RespuestaBot
     {
-        return $this->inicio->mostrarCategorias($cliente, $estado);
+        return $this->inicio->mostrarCategorias($cliente, $estado, 0, 'otras');
     }
 
-    public function similaresDesdeProductoActual(ConversationState $estado): RespuestaBot
+    public function otrosModelosMismaCategoria(ConversationState $estado): RespuestaBot
     {
         $productoId = (int) (($estado->context ?? [])['producto_actual_id'] ?? 0);
         $producto = $this->catalogo->productoVendible($productoId);
+        if (! $producto || ! $producto->category_id) {
+            return RespuestaBot::texto($this->mensajes->plantilla('sin_datos_bd'));
+        }
 
-        return $producto
-            ? $this->presentacion->mostrarSimilaresDe($estado, $producto)
-            : RespuestaBot::texto($this->mensajes->plantilla('sin_datos_bd'));
+        return $this->listarProductos(
+            $estado,
+            (int) $producto->category_id,
+            0,
+            $productoId,
+            'lista_otros_modelos_intro'
+        );
     }
 }

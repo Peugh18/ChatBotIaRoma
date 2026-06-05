@@ -3,7 +3,6 @@
 namespace App\Ventas\Repositorios;
 
 use App\Models\DeliveryZone;
-use App\Models\SedeShalom;
 use Illuminate\Support\Collection;
 
 class RepositorioEnvios
@@ -61,26 +60,11 @@ class RepositorioEnvios
         return 15.0;
     }
 
-    public function costoShalomPorSede(?int $sedeId, string $region = 'lima'): float
+    public function costoShalom(string $region = 'provincia'): float
     {
-        if ($sedeId) {
-            $sede = SedeShalom::query()->where('activo', true)->find($sedeId);
-            if ($sede) {
-                return (float) $sede->costo;
-            }
-        }
-
         return $region === 'lima'
             ? (float) config('flujo_ventas.costo_shalom_lima', 10)
             : (float) config('flujo_ventas.costo_shalom_provincia', 12);
-    }
-
-    /**
-     * @return Collection<int, SedeShalom>
-     */
-    public function sedesShalomActivas(): Collection
-    {
-        return SedeShalom::query()->where('activo', true)->orderBy('nombre')->get();
     }
 
     public function normalizarDistrito(string $texto): string

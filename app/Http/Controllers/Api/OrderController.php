@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\ConversationState;
 use App\Models\Customer;
 use App\Models\Order;
-use App\Services\ServicioModoConversacionPedido;
 use App\Models\OrderItem;
-use App\Support\EtapaVenta;
+use App\Services\ServicioModoConversacionPedido;
+use App\Services\ServicioNotificacionEnvioPedido;
+use App\Services\ServicioStockPedido;
+use App\Ventas\Servicios\ServicioColaLinkTarjeta;
 use App\Ventas\Servicios\ServicioColaValidacionPago;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -124,13 +126,18 @@ class OrderController extends Controller
 
         $order->refresh();
         $paymentValidationReady = false;
-        if (($validated['status'] ?? null) === 'paid' && $order->conversation_state_id) {
-            $state = ConversationState::find($order->conversation_state_id);
-            if ($state) {
-                // If the state is still in VALIDACION_PAGO, the payment was just validated.
-                // We should ensure the conversation switches to human mode so the advisor coordinates delivery.
-                app(ServicioModoConversacionPedido::class)->activarHumanoTrasConfirmacion($state, $order->id);
+        if (($validated['status'] ?? null) === 'paid') {
+            app(ServicioStockPedido::class)->descontarSiAplica($order->fresh());
+            if ($order->conversation_state_id) {
+                $state = ConversationState::find($order->conversation_state_id);
+                if ($state) {
+                    app(ServicioModoConversacionPedido::class)->activarHumanoTrasConfirmacion($state, $order->id);
+                }
             }
+        }
+
+        if (($validated['status'] ?? null) === 'cancelled') {
+            app(ServicioStockPedido::class)->restaurarSiAplica($order->fresh());
         }
 
         if (($validated['status'] ?? null) === 'delivered' && $order->conversation_state_id) {
@@ -147,9 +154,44 @@ class OrderController extends Controller
         ]);
     }
 
+    public function marcarEnviado(Request $request, string $id, ServicioNotificacionEnvioPedido $notificacion): JsonResponse
+    {
+        $order = Order::with('customer')->findOrFail($id);
+
+        if ($order->status !== 'paid') {
+            return response()->json([
+                'message' => 'Solo puedes marcar como enviado un pedido en estado Pagado.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'message' => 'required|string|max:2000',
+            'tracking_code' => 'nullable|string|max:120',
+            'image' => 'nullable|image|max:10240',
+        ]);
+
+        try {
+            $resultado = $notificacion->enviar(
+                $order,
+                $validated['message'],
+                $validated['tracking_code'] ?? null,
+                $request->file('image'),
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => 'Pedido marcado como enviado y notificación encolada a WhatsApp.',
+            'data' => $order->fresh()->load(['customer', 'items.product']),
+            'whatsapp_preview' => mb_substr($resultado['content'], 0, 200),
+        ]);
+    }
+
     public function destroy(string $id): JsonResponse
     {
         $order = Order::findOrFail($id);
+        app(ServicioStockPedido::class)->restaurarSiAplica($order);
         $order->delete();
 
         return response()->json(['message' => 'Order deleted successfully']);
@@ -169,6 +211,7 @@ class OrderController extends Controller
         $openConversations = ConversationState::where('requires_human', true)->count();
 
         $paymentValidationQueue = app(ServicioColaValidacionPago::class)->pendientes(10);
+        $cardLinkQueue = app(ServicioColaLinkTarjeta::class)->pendientes(10);
 
         // 4. Clientes totales
         $totalCustomers = Customer::count();
@@ -192,6 +235,8 @@ class OrderController extends Controller
             'recent_orders' => $recentOrders,
             'payment_validation_count' => $paymentValidationQueue->count(),
             'payment_validation_queue' => $paymentValidationQueue,
+            'card_payment_link_count' => $cardLinkQueue->count(),
+            'card_payment_link_queue' => $cardLinkQueue,
         ]);
     }
 

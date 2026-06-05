@@ -7,7 +7,6 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Support\EtapaVenta;
 use App\Ventas\MaquinaEstados\EtapaVentas;
-use App\Services\ServicioModoConversacionPedido;
 use App\Ventas\MaquinaEstados\MaquinaEstadosVentas;
 use App\Ventas\Repositorios\RepositorioCatalogo;
 
@@ -137,6 +136,18 @@ class ServicioContextoVentaChat
                     'qty' => $item->qty,
                 ])->values()->all() ?? [],
             ],
+            'card_payment_link' => [
+                'pending' => $state && app(ServicioLinkPagoTarjeta::class)->estaPendiente($state),
+                'order_id' => $orderId > 0 ? $orderId : null,
+                'order_total' => $pendingOrder ? (float) $pendingOrder->amount_total : null,
+                'waiting_since' => $ctx[ServicioLinkPagoTarjeta::CTX_SOLICITADO_AT] ?? null,
+                'items' => $pendingOrder?->items?->map(fn ($item) => [
+                    'product' => $item->product?->name,
+                    'color' => $item->color,
+                    'size' => $item->size,
+                    'qty' => $item->qty,
+                ])->values()->all() ?? [],
+            ],
         ];
     }
 
@@ -155,6 +166,7 @@ class ServicioContextoVentaChat
             EtapaVentas::PAGO => 'Método de pago',
             EtapaVentas::COMPROBANTE => 'Esperando comprobante',
             EtapaVentas::TARJETA_DATOS => 'Datos tarjeta',
+            EtapaVentas::ESPERANDO_LINK_TARJETA => 'Link tarjeta pendiente',
             EtapaVentas::VALIDACION_PAGO, 'awaiting_payment_validation' => 'Validando pago',
             default => $etapa,
         };

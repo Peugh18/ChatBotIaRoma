@@ -17,6 +17,9 @@ export function useSalesContext(
     const photoError = ref<string | null>(null);
     const validatingPayment = ref(false);
     const paymentValidationError = ref<string | null>(null);
+    const sendingCardLink = ref(false);
+    const cardLinkError = ref<string | null>(null);
+    const cardPaymentLinkInput = ref('');
     const { refreshCsrfToken } = useCsrfToken();
 
     const galleryColors = computed((): ColorGalleryItem[] => {
@@ -56,6 +59,43 @@ export function useSalesContext(
     const clearSalesContext = () => {
         salesContext.value = null;
         resetGallery();
+    };
+
+    const sendCardPaymentLink = async (): Promise<boolean> => {
+        if (!selectedPhone.value) {
+            return false;
+        }
+
+        const link = cardPaymentLinkInput.value.trim();
+        if (!link) {
+            cardLinkError.value = 'Pega el link de pago antes de enviar.';
+            return false;
+        }
+
+        sendingCardLink.value = true;
+        cardLinkError.value = null;
+
+        try {
+            await apiJson(`/api/conversations/${encodeURIComponent(selectedPhone.value)}/send-card-payment-link`, {
+                method: 'POST',
+                body: JSON.stringify({ payment_link: link }),
+            });
+            cardPaymentLinkInput.value = '';
+            currentConversationMode.value = 'bot';
+            if (isAutoEscalated) {
+                isAutoEscalated.value = false;
+            }
+            await onPhotoSent?.();
+            await fetchSalesContext(selectedPhone.value);
+
+            return true;
+        } catch (error) {
+            cardLinkError.value =
+                error instanceof ApiError ? error.message : 'No se pudo enviar el link de pago';
+            return false;
+        } finally {
+            sendingCardLink.value = false;
+        }
     };
 
     const validatePayment = async (): Promise<boolean> => {
@@ -157,9 +197,13 @@ export function useSalesContext(
         photoError,
         validatingPayment,
         paymentValidationError,
+        sendingCardLink,
+        cardLinkError,
+        cardPaymentLinkInput,
         fetchSalesContext,
         resetGallery,
         clearSalesContext,
+        sendCardPaymentLink,
         validatePayment,
         sendColorPhotoToCustomer,
     };

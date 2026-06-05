@@ -20,6 +20,14 @@ export interface PaymentValidationItem {
     waiting_since: string | null;
 }
 
+export interface CardPaymentLinkItem {
+    phone_number: string;
+    customer_name: string | null;
+    order_id: number | null;
+    order_total: number | null;
+    waiting_since: string | null;
+}
+
 export interface DashboardStats {
     total_sales: number;
     average_ticket: number;
@@ -29,6 +37,8 @@ export interface DashboardStats {
     recent_orders: RecentOrder[];
     payment_validation_count: number;
     payment_validation_queue: PaymentValidationItem[];
+    card_payment_link_count: number;
+    card_payment_link_queue: CardPaymentLinkItem[];
 }
 
 const emptyStats = (): DashboardStats => ({
@@ -40,6 +50,8 @@ const emptyStats = (): DashboardStats => ({
     recent_orders: [],
     payment_validation_count: 0,
     payment_validation_queue: [],
+    card_payment_link_count: 0,
+    card_payment_link_queue: [],
 });
 
 export function useDashboardStats() {
