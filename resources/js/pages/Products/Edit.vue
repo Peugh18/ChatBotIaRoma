@@ -1,8 +1,14 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
+import PageHeader from '@/components/crm/PageHeader.vue';
+import CrmPanel from '@/components/crm/CrmPanel.vue';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ref, onMounted } from 'vue';
+import { Plus, Trash2, Image, Tag, ChevronLeft, Save, Package, X, Sparkles } from 'lucide-vue-next';
 
 const props = defineProps<{
     product: {
@@ -49,6 +55,8 @@ interface ProductVariant {
     sizes_stock: Record<string, number>;
     pendingFile?: File | null;
     uploading?: boolean;
+    tempSize?: string;
+    tempStock?: number | null;
 }
 
 const form = ref({
@@ -68,6 +76,8 @@ const form = ref({
         sizes_stock: v.sizes_stock,
         pendingFile: null,
         uploading: false,
+        tempSize: '',
+        tempStock: null as number | null,
     })),
 });
 
@@ -195,6 +205,8 @@ const addVariant = () => {
         sizes_stock: {},
         pendingFile: null,
         uploading: false,
+        tempSize: '',
+        tempStock: null,
     });
 };
 
@@ -202,14 +214,15 @@ const removeVariant = (index: number) => {
     form.value.variants.splice(index, 1);
 };
 
-const addSizeToVariant = (variant: ProductVariant) => {
-    const size = prompt('Ingrese la talla (ej: S, M, L):');
-    if (size) {
-        const stock = prompt('Ingrese el stock:');
-        if (stock) {
-            variant.sizes_stock[size] = parseInt(stock);
-        }
-    }
+const addSizeToVariantInline = (variant: ProductVariant) => {
+    const size = variant.tempSize?.trim().toUpperCase();
+    const stock = variant.tempStock;
+    if (!size) return;
+    if (stock === undefined || stock === null || stock < 0) return;
+    
+    variant.sizes_stock[size] = stock;
+    variant.tempSize = '';
+    variant.tempStock = null;
 };
 
 const removeSizeFromVariant = (variant: ProductVariant, size: string) => {
@@ -232,7 +245,6 @@ const getCsrfToken = (): string => {
 };
 
 const submit = async () => {
-    // Validación local antes de enviar
     if (!form.value.price || Number(form.value.price) <= 0) {
         alert('El precio del producto debe ser mayor a 0');
         return;
@@ -338,37 +350,49 @@ onMounted(() => {
     <Head title="Editar Producto" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
-        <div class="px-4 py-6 sm:px-6 lg:px-8">
-            <div class="md:flex md:items-center md:justify-between">
-                <div class="min-w-0 flex-1">
-                    <h2 class="text-2xl font-bold leading-7 text-gray-900 dark:text-white sm:truncate sm:text-3xl sm:tracking-tight">
-                        Editar Producto
-                    </h2>
-                </div>
-            </div>
+        <div class="crm-page max-w-4xl mx-auto">
+            <PageHeader
+                title="Editar Producto"
+                description="Modifica la información, precio, variantes, stock y similares del artículo."
+            >
+                <template #actions>
+                    <Button variant="outline" as-child>
+                        <Link href="/products" class="flex items-center gap-1">
+                            <ChevronLeft class="h-4 w-4" />
+                            <span>Volver</span>
+                        </Link>
+                    </Button>
+                </template>
+            </PageHeader>
 
             <form @submit.prevent="submit" class="mt-8 space-y-6">
-                <div class="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
-                    <div class="sm:col-span-4">
-                        <label for="name" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Nombre del producto</label>
-                        <div class="mt-2">
-                            <input
+                <!-- Información General -->
+                <CrmPanel>
+                    <div class="mb-4 pb-3 border-b border-border">
+                        <h3 class="text-lg font-semibold text-foreground flex items-center gap-2">
+                            <Package class="h-5 w-5 text-primary" />
+                            Información General
+                        </h3>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-y-6 sm:grid-cols-6 sm:gap-x-6">
+                        <div class="sm:col-span-4 space-y-1.5">
+                            <Label for="name">Nombre del producto</Label>
+                            <Input
                                 type="text"
                                 id="name"
                                 v-model="form.name"
                                 required
-                                class="block w-full rounded-md border-0 py-1.5 text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 dark:bg-gray-800 sm:text-sm sm:leading-6"
+                                placeholder="Ej: Camiseta Oversize Negra"
                             />
                         </div>
-                    </div>
 
-                    <div class="sm:col-span-4">
-                        <label for="category" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Categoría</label>
-                        <div class="mt-2">
+                        <div class="sm:col-span-4 space-y-1.5">
+                            <Label for="category">Categoría</Label>
                             <select
                                 id="category"
                                 v-model="form.category_id"
-                                class="block w-full rounded-md border-0 py-1.5 text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-inset focus:ring-indigo-600 dark:bg-gray-800 sm:text-sm sm:leading-6"
+                                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 <option :value="null">Sin categoría</option>
                                 <option v-for="category in categories" :key="category.id" :value="category.id">
@@ -376,244 +400,344 @@ onMounted(() => {
                                 </option>
                             </select>
                         </div>
-                    </div>
 
-                    <div class="sm:col-span-6">
-                        <label for="description" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Descripción</label>
-                        <div class="mt-2">
+                        <div class="sm:col-span-6 space-y-1.5">
+                            <Label for="description">Descripción</Label>
                             <textarea
                                 id="description"
                                 v-model="form.description"
                                 rows="3"
-                                class="block w-full rounded-md border-0 py-1.5 text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 dark:bg-gray-800 sm:text-sm sm:leading-6"
+                                placeholder="Escribe detalles del producto..."
+                                class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                             />
                         </div>
                     </div>
+                </CrmPanel>
 
-                    <div class="sm:col-span-2">
-                        <label for="status" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Estado en bot</label>
-                        <div class="mt-2">
+                <!-- Estado, Precios y Descuentos -->
+                <CrmPanel>
+                    <div class="mb-4 pb-3 border-b border-border">
+                        <h3 class="text-lg font-semibold text-foreground">
+                            Estado, Precios y Descuentos
+                        </h3>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-y-6 sm:grid-cols-3 sm:gap-x-6">
+                        <div class="space-y-1.5">
+                            <Label for="status">Estado en bot</Label>
                             <select
                                 id="status"
                                 v-model="form.status"
-                                class="block w-full rounded-md border-0 py-1.5 text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 dark:bg-gray-800 sm:text-sm"
+                                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 <option value="disponible">Disponible</option>
                                 <option value="agotado">Agotado</option>
                                 <option value="oculto">Oculto (no se muestra)</option>
                             </select>
                         </div>
-                    </div>
 
-                    <div class="sm:col-span-2">
-                        <label for="price" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Precio (S/)</label>
-                        <div class="mt-2">
-                            <input
+                        <div class="space-y-1.5">
+                            <Label for="price">Precio (S/)</Label>
+                            <Input
                                 type="number"
                                 id="price"
                                 v-model="form.price"
                                 step="0.01"
                                 min="0.01"
                                 required
-                                class="block w-full rounded-md border-0 py-1.5 text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 dark:bg-gray-800 sm:text-sm sm:leading-6"
+                                placeholder="Ej: 89.90"
                             />
                         </div>
-                    </div>
 
-                    <div class="sm:col-span-2">
-                        <label for="discount" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Descuento (S/)</label>
-                        <div class="mt-2">
-                            <input
+                        <div class="space-y-1.5">
+                            <Label for="discount">Descuento (S/)</Label>
+                            <Input
                                 type="number"
                                 id="discount"
                                 v-model="form.discount"
                                 step="0.01"
                                 min="0"
-                                class="block w-full rounded-md border-0 py-1.5 text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 dark:bg-gray-800 sm:text-sm sm:leading-6"
+                                placeholder="Ej: 10.00 (Dejar en 0 o vacío si no aplica)"
                             />
                         </div>
                     </div>
+                </CrmPanel>
 
-                    <div class="sm:col-span-6">
-                        <label class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Tags para IA</label>
-                        <div class="mt-2 flex gap-2">
-                            <input
+                <!-- Tags del Producto -->
+                <CrmPanel>
+                    <div class="mb-4 pb-3 border-b border-border">
+                        <h3 class="text-lg font-semibold text-foreground flex items-center gap-2">
+                            <Tag class="h-5 w-5 text-primary" />
+                            Etiquetas para Inteligencia Artificial (Tags)
+                        </h3>
+                        <p class="text-xs text-muted-foreground mt-0.5">Ayudan al bot a entender mejor de qué tipo de producto se trata para responder consultas.</p>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="flex gap-2">
+                            <Input
                                 type="text"
                                 v-model="newTag"
                                 @keyup.enter="addTag"
-                                placeholder="Agregar tag y presionar Enter"
-                                class="block flex-1 rounded-md border-0 py-1.5 text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 dark:bg-gray-800 sm:text-sm sm:leading-6"
+                                placeholder="Ej: elegante, algodon, urbano..."
+                                class="flex-1"
                             />
-                            <button
+                            <Button
                                 type="button"
                                 @click="addTag"
-                                class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
                             >
+                                <Plus class="h-4 w-4 mr-1.5" />
                                 Agregar
-                            </button>
+                            </Button>
                         </div>
-                        <div class="mt-2 flex flex-wrap gap-2">
+                        <div v-if="form.tags_ia.length === 0" class="text-xs text-muted-foreground italic">
+                            No hay etiquetas configuradas.
+                        </div>
+                        <div v-else class="flex flex-wrap gap-1.5">
                             <span
                                 v-for="(tag, index) in form.tags_ia"
                                 :key="index"
-                                class="inline-flex items-center rounded-md bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 text-sm font-medium text-indigo-700 dark:text-indigo-300 ring-1 ring-inset ring-indigo-700/10 dark:ring-indigo-400/30"
+                                class="inline-flex items-center rounded-full bg-primary/10 border border-primary/20 px-3 py-0.5 text-xs font-semibold text-primary animate-fade-in"
                             >
                                 {{ tag }}
-                                <button type="button" @click="removeTag(index)" class="ml-1 text-indigo-500 hover:text-indigo-700">×</button>
+                                <button type="button" @click="removeTag(index)" class="ml-1.5 text-primary hover:text-primary/75 focus:outline-none">
+                                    <X class="h-3 w-3" />
+                                </button>
                             </span>
                         </div>
                     </div>
-                </div>
+                </CrmPanel>
 
-                <div class="border-t border-gray-900/10 dark:border-gray-700 pt-8">
-                    <div class="flex items-center justify-between">
-                        <h3 class="text-lg font-semibold leading-6 text-gray-900 dark:text-white">Variantes</h3>
-                        <button
+                <!-- Variantes y Stock -->
+                <CrmPanel>
+                    <div class="mb-4 pb-3 border-b border-border flex items-center justify-between flex-wrap gap-4">
+                        <div>
+                            <h3 class="text-lg font-semibold text-foreground">
+                                Variantes y Control de Stock
+                            </h3>
+                            <p class="text-xs text-muted-foreground mt-0.5">Configura colores, fotos y el stock disponible por cada talla.</p>
+                        </div>
+                        <Button
                             type="button"
+                            variant="secondary"
                             @click="addVariant"
-                            class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
                         >
+                            <Plus class="h-4 w-4 mr-1.5" />
                             Agregar Variante
-                        </button>
+                        </Button>
                     </div>
 
-                    <div v-if="form.variants.length === 0" class="mt-4 text-sm text-gray-500 dark:text-gray-400">
-                        No hay variantes. Agrega al menos una.
+                    <div v-if="form.variants.length === 0" class="text-center py-8 border border-dashed border-border rounded-xl text-muted-foreground text-sm">
+                        No hay variantes configuradas. Agrega al menos una para continuar.
                     </div>
 
-                    <div v-for="(variant, index) in form.variants" :key="index" class="mt-4 border border-gray-300 dark:border-gray-600 rounded-lg p-4">
-                        <div class="flex items-center justify-between mb-4">
-                            <h4 class="text-sm font-medium text-gray-900 dark:text-white">Variante {{ index + 1 }}</h4>
+                    <div v-else class="space-y-6">
+                        <div 
+                            v-for="(variant, index) in form.variants" 
+                            :key="index" 
+                            class="border border-border bg-muted/15 p-6 rounded-xl relative shadow-sm animate-in fade-in-50 duration-200"
+                        >
+                            <div class="flex items-center justify-between mb-4 pb-3 border-b border-border/50">
+                                <h4 class="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                                    <span class="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                                        {{ index + 1 }}
+                                    </span>
+                                    Variante de Color
+                                </h4>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    class="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 px-2"
+                                    @click="removeVariant(index)"
+                                >
+                                    <Trash2 class="h-4 w-4 mr-1" />
+                                    <span>Eliminar</span>
+                                </Button>
+                            </div>
+
+                            <div class="grid grid-cols-1 gap-y-6 sm:grid-cols-2 sm:gap-x-6">
+                                <div class="space-y-1.5">
+                                    <Label>Color / Nombre del tono</Label>
+                                    <Input
+                                        type="text"
+                                        v-model="variant.color"
+                                        required
+                                        placeholder="Ej: Negro, Rojo, Azul Marino"
+                                    />
+                                </div>
+
+                                <div class="space-y-1.5">
+                                    <Label>Foto por color</Label>
+                                    <div class="flex flex-col gap-3">
+                                        <div class="flex items-center gap-3">
+                                            <label class="flex flex-col items-center justify-center border border-dashed border-input hover:border-primary bg-background hover:bg-primary/5 rounded-lg p-4 cursor-pointer transition text-center shrink-0 w-28 h-20">
+                                                <Image class="h-5 w-5 text-muted-foreground" />
+                                                <span class="text-[10px] text-muted-foreground mt-1 font-medium">Subir foto</span>
+                                                <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    class="hidden"
+                                                    @change="onVariantPhotoSelected(variant, $event)"
+                                                />
+                                            </label>
+                                            <div class="text-xs flex-1">
+                                                <div v-if="variant.pendingFile" class="font-medium text-foreground truncate max-w-[200px]" :title="variant.pendingFile.name">
+                                                    {{ variant.pendingFile.name }}
+                                                </div>
+                                                <div v-else class="text-muted-foreground">
+                                                    Ningún archivo seleccionado
+                                                </div>
+                                                <div class="mt-2 flex gap-1.5">
+                                                    <Button
+                                                        type="button"
+                                                        size="xs"
+                                                        class="h-7 text-[10px]"
+                                                        @click="uploadVariantPhoto(variant)"
+                                                        :disabled="!variant.pendingFile || variant.uploading"
+                                                    >
+                                                        {{ variant.uploading ? 'Subiendo...' : 'Subir Foto Ahora' }}
+                                                    </Button>
+                                                </div>
+                                                <p class="text-[9px] text-muted-foreground/75 mt-1">Selecciona la foto y pulsa «Subir Foto Ahora», o guarda el producto para subirla automáticamente.</p>
+                                                <p v-if="!variant.id" class="text-[9px] text-amber-600 mt-1 font-medium">Nueva variante: se creará al guardar el producto.</p>
+                                            </div>
+                                        </div>
+
+                                        <!-- Vista Previa de Imagen -->
+                                        <div v-if="variantPreviewUrl(variant)" class="mt-1">
+                                            <div class="text-[10px] text-muted-foreground mb-1">Imagen actual / seleccionada:</div>
+                                            <img
+                                                :src="variantPreviewUrl(variant)!"
+                                                alt="Vista previa"
+                                                class="h-28 w-28 rounded-md object-cover border border-border bg-muted/20"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Stock por Talla Inline Form -->
+                            <div class="mt-6 pt-4 border-t border-border/50">
+                                <Label class="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-2">Stock por talla</Label>
+                                
+                                <div v-if="Object.keys(variant.sizes_stock).length === 0" class="text-xs text-muted-foreground italic mb-4">
+                                    No hay tallas configuradas. Agrega tallas abajo.
+                                </div>
+                                <div v-else class="flex flex-wrap gap-2 mb-4">
+                                    <span
+                                        v-for="(stock, size) in variant.sizes_stock"
+                                        :key="size"
+                                        class="inline-flex items-center rounded-full bg-muted border border-border px-3 py-0.5 text-xs font-medium text-foreground"
+                                    >
+                                        <span class="font-bold text-primary mr-1">{{ size }}:</span> {{ stock }} ud
+                                        <button
+                                            type="button"
+                                            @click="removeSizeFromVariant(variant, size)"
+                                            class="ml-1.5 text-muted-foreground hover:text-foreground focus:outline-none"
+                                        >
+                                            <X class="h-3 w-3" />
+                                        </button>
+                                    </span>
+                                </div>
+
+                                <div class="flex items-center gap-2 max-w-md">
+                                    <div class="w-32">
+                                        <Input
+                                            type="text"
+                                            v-model="variant.tempSize"
+                                            placeholder="Talla (Ej: S, 38)"
+                                            class="h-9 text-xs"
+                                            @keyup.enter="addSizeToVariantInline(variant)"
+                                        />
+                                    </div>
+                                    <div class="w-32">
+                                        <Input
+                                            type="number"
+                                            v-model.number="variant.tempStock"
+                                            placeholder="Stock (Ej: 15)"
+                                            class="h-9 text-xs"
+                                            min="0"
+                                            @keyup.enter="addSizeToVariantInline(variant)"
+                                        />
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        class="h-9 px-3 gap-1 text-xs"
+                                        @click="addSizeToVariantInline(variant)"
+                                    >
+                                        <Plus class="h-3 w-3" />
+                                        <span>Añadir</span>
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </CrmPanel>
+
+                <!-- Similares para el Bot -->
+                <CrmPanel>
+                    <div class="mb-4 pb-3 border-b border-border">
+                        <h3 class="text-lg font-semibold text-foreground flex items-center gap-2">
+                            <Sparkles class="h-5 w-5 text-primary" />
+                            Productos Similares (Recomendaciones del Bot)
+                        </h3>
+                        <p class="text-xs text-muted-foreground mt-0.5">
+                            Si este modelo se agota, el bot ofrecerá estos productos alternativos (máx. 5). Si no eliges ninguno, el bot recomendará productos de la misma categoría.
+                        </p>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-1 border border-border rounded-lg bg-muted/10">
                             <button
+                                v-for="p in allProducts"
+                                :key="p.id"
                                 type="button"
-                                @click="removeVariant(index)"
-                                class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 text-sm"
+                                class="rounded-full px-3 py-1.5 text-xs border transition duration-150 font-medium select-none"
+                                :class="
+                                    similarIds.includes(p.id)
+                                        ? 'bg-primary text-primary-foreground border-primary'
+                                        : 'bg-background hover:bg-muted text-foreground border-border'
+                                "
+                                @click="toggleSimilar(p.id)"
                             >
-                                Eliminar
+                                {{ p.name }}
                             </button>
                         </div>
-
-                        <div class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-                            <div>
-                                <label class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Color</label>
-                                <input
-                                    type="text"
-                                    v-model="variant.color"
-                                    required
-                                    class="mt-1 block w-full rounded-md border-0 py-1.5 text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 focus:ring-2 focus:ring-inset focus:ring-indigo-600 dark:bg-gray-800 sm:text-sm sm:leading-6"
-                                />
-                            </div>
-
-                            <div>
-                                <label class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Foto por color</label>
-                                <div class="mt-1 flex gap-2">
-                                    <input
-                                        type="file"
-                                        accept="image/*"
-                                        ref="fileInput"
-                                        class="block w-full text-sm text-gray-700 dark:text-gray-200"
-                                        @change="onVariantPhotoSelected(variant, $event)"
-                                    />
-                                    <button
-                                        type="button"
-                                        @click="uploadVariantPhoto(variant)"
-                                        :disabled="!variant.pendingFile || variant.uploading"
-                                        class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        {{ variant.uploading ? 'Subiendo...' : 'Subir Foto' }}
-                                    </button>
-                                </div>
-                                <p class="mt-1 text-xs text-gray-500">Selecciona la foto y pulsa «Subir Foto», o guarda el producto y se subirá automáticamente.</p>
-                                <p v-if="!variant.id" class="mt-1 text-xs text-amber-600">Esta variante es nueva: al guardar el producto se creará y podrás subir la foto.</p>
-                                <p v-if="variant.pendingFile" class="mt-1 text-xs text-green-600">Archivo seleccionado: {{ variant.pendingFile.name }}</p>
-                                <img
-                                    v-if="variantPreviewUrl(variant)"
-                                    :src="variantPreviewUrl(variant)!"
-                                    alt="Vista previa"
-                                    class="mt-2 h-28 w-28 rounded-md object-cover border border-gray-200 dark:border-gray-600"
-                                />
-                            </div>
-                        </div>
-
-                        <div class="mt-4">
-                            <div class="flex items-center justify-between mb-2">
-                                <label class="block text-sm font-medium leading-6 text-gray-900 dark:text-white">Stock por talla</label>
-                                <button
-                                    type="button"
-                                    @click="addSizeToVariant(variant)"
-                                    class="text-sm text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300"
-                                >
-                                    + Agregar talla
-                                </button>
-                            </div>
-                            <div v-if="Object.keys(variant.sizes_stock).length === 0" class="text-sm text-gray-500 dark:text-gray-400">
-                                No hay tallas configuradas
-                            </div>
-                            <div v-else class="flex flex-wrap gap-2">
-                                <span
-                                    v-for="(stock, size) in variant.sizes_stock"
-                                    :key="size"
-                                    class="inline-flex items-center rounded-md bg-gray-100 dark:bg-gray-700 px-2 py-1 text-sm text-gray-700 dark:text-gray-300"
-                                >
-                                    {{ size }}: {{ stock }}
-                                    <button
-                                        type="button"
-                                        @click="removeSizeFromVariant(variant, size)"
-                                        class="ml-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-100"
-                                    >
-                                        ×
-                                    </button>
-                                </span>
-                            </div>
+                        <div class="flex justify-between items-center gap-2">
+                            <span class="text-xs text-muted-foreground">
+                                Seleccionados: {{ similarIds.length }} de 5
+                            </span>
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                :disabled="savingSimilares"
+                                @click="saveSimilares"
+                            >
+                                {{ savingSimilares ? 'Guardando...' : 'Guardar similares ahora' }}
+                            </Button>
                         </div>
                     </div>
-                </div>
+                </CrmPanel>
 
-                <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-3">
-                    <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Productos similares (bot)</h3>
-                    <p class="text-xs text-gray-500">
-                        Si este modelo se agota, el bot ofrece estos primero (máx. 5). Si no eliges ninguno, usa la misma categoría automáticamente.
-                    </p>
-                    <div class="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
-                        <button
-                            v-for="p in allProducts"
-                            :key="p.id"
-                            type="button"
-                            class="rounded-full px-3 py-1 text-xs border transition-colors"
-                            :class="
-                                similarIds.includes(p.id)
-                                    ? 'bg-indigo-600 text-white border-indigo-600'
-                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600'
-                            "
-                            @click="toggleSimilar(p.id)"
-                        >
-                            {{ p.name }}
-                        </button>
-                    </div>
-                    <button
-                        type="button"
-                        class="text-sm text-indigo-600 dark:text-indigo-400"
-                        :disabled="savingSimilares"
-                        @click="saveSimilares"
-                    >
-                        {{ savingSimilares ? 'Guardando...' : 'Guardar similares' }}
-                    </button>
-                </div>
-
-                <div class="flex items-center justify-end gap-x-6">
-                    <Link
-                        href="/products"
-                        class="text-sm font-semibold leading-6 text-gray-900 dark:text-white hover:text-gray-700 dark:hover:text-gray-300"
-                    >
-                        Cancelar
-                    </Link>
-                    <button
+                <!-- Acciones del Formulario -->
+                <div class="flex items-center justify-end gap-3 border-t border-border pt-6 mt-8">
+                    <Button variant="outline" as-child>
+                        <Link href="/products">
+                            Cancelar
+                        </Link>
+                    </Button>
+                    <Button
                         type="submit"
                         :disabled="loading"
-                        class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                        class="gap-1.5"
                     >
-                        {{ loading ? 'Guardando...' : 'Guardar cambios' }}
-                    </button>
+                        <Save class="h-4 w-4" />
+                        <span>{{ loading ? 'Guardando...' : 'Guardar cambios' }}</span>
+                    </Button>
                 </div>
             </form>
         </div>
