@@ -28,21 +28,40 @@ class RepositorioPedidos
 
         $metodoEnvio = (string) ($datosEnvio['metodo'] ?? 'motorizado');
         $total = $subtotal + $costoEnvio;
+        $esShalom = $metodoEnvio === 'shalom';
+
+        $ubicacion = null;
+        if (! $esShalom && isset($datosEnvio['ubicacion_lat'], $datosEnvio['ubicacion_lng'])) {
+            $ubicacion = [
+                'lat' => (float) $datosEnvio['ubicacion_lat'],
+                'lng' => (float) $datosEnvio['ubicacion_lng'],
+                'label' => $datosEnvio['ubicacion_label'] ?? null,
+            ];
+        }
+
+        $notas = [];
+        if ($esShalom && ! empty($datosEnvio['dni'])) {
+            $notas[] = 'DNI: '.$datosEnvio['dni'];
+        }
+        if (! $esShalom && ! empty($datosEnvio['ubicacion_texto'])) {
+            $notas[] = 'Ubicación: '.$datosEnvio['ubicacion_texto'];
+        }
 
         $order = Order::create([
             'customer_id' => $cliente->id,
             'conversation_state_id' => $estado->id,
             'status' => 'pending',
-            'shipping_method' => $metodoEnvio === 'shalom' ? 'shalom' : 'motorizado',
+            'shipping_method' => $esShalom ? 'shalom' : 'motorizado',
             'shipping_cost' => $costoEnvio,
             'payment_method' => $metodoPago === 'tarjeta' ? 'card' : 'yape',
             'district' => $datosEnvio['distrito'] ?? null,
-            'full_address' => trim(
-                ($datosEnvio['direccion'] ?? '').' '.($datosEnvio['referencia'] ?? '')
-            ),
+            'full_address' => $esShalom
+                ? 'Sede Shalom: '.($datosEnvio['distrito'] ?? '')
+                : trim((string) ($datosEnvio['direccion'] ?? '')),
+            'location' => $ubicacion,
             'amount_subtotal' => $subtotal,
             'amount_total' => $total,
-            'notes' => $datosEnvio['referencia'] ?? null,
+            'notes' => $notas !== [] ? implode(' | ', $notas) : null,
         ]);
 
         foreach ($lineasCarrito as $l) {

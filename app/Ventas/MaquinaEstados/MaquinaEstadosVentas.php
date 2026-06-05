@@ -68,6 +68,7 @@ class MaquinaEstadosVentas
             $ctx['payment_proof_url'],
             $ctx['payment_validation_requested_at'],
             $ctx['handoff'],
+            $ctx['datos_envio'],
             $ctx['carrito'],
             $ctx['producto_actual_id'],
             $ctx['current_product_id'],
@@ -82,7 +83,11 @@ class MaquinaEstadosVentas
             $ctx['pending_image_url'],
             $ctx['pending_image_caption'],
             $ctx['ultimo_pedido_id'],
-            $ctx['last_order_id']
+            $ctx['last_order_id'],
+            $ctx['pendiente_link_tarjeta'],
+            $ctx['link_tarjeta_solicitado_at'],
+            $ctx['payment_link_sent_at'],
+            $ctx['payment_link_url'],
         );
         $estado->context = $ctx;
         $this->establecer($estado, EtapaVentas::INICIO);
@@ -120,6 +125,29 @@ class MaquinaEstadosVentas
     {
         $ctx = $estado->context ?? [];
         $ctx['datos_envio'] = array_merge($ctx['datos_envio'] ?? [], $datos);
+        $estado->context = $ctx;
+        $estado->save();
+    }
+
+    public function limpiarDatosEnvio(ConversationState $estado): void
+    {
+        $ctx = $estado->context ?? [];
+        unset($ctx['datos_envio'], $ctx['costo_envio'], $ctx['checkout_paso']);
+        $estado->context = $ctx;
+        $estado->save();
+    }
+
+    /**
+     * @param  list<string>  $claves
+     */
+    public function quitarCamposEnvio(ConversationState $estado, array $claves): void
+    {
+        $ctx = $estado->context ?? [];
+        $datos = $ctx['datos_envio'] ?? [];
+        foreach ($claves as $clave) {
+            unset($datos[$clave]);
+        }
+        $ctx['datos_envio'] = $datos;
         $estado->context = $ctx;
         $estado->save();
     }
@@ -165,6 +193,7 @@ class MaquinaEstadosVentas
             EtapaVentas::MAS_O_CONFIRMAR,
             EtapaVentas::ENVIO_METODO,
             EtapaVentas::ENVIO_DATOS,
+            EtapaVentas::ESPERANDO_LINK_TARJETA,
             EtapaVentas::RESUMEN,
             EtapaVentas::PAGO,
             EtapaVentas::COMPROBANTE,

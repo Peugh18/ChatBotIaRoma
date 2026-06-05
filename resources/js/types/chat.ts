@@ -108,6 +108,14 @@ export interface PaymentValidationContext {
     payment_proof_url: string | null;
 }
 
+export interface CardPaymentLinkContext {
+    pending: boolean;
+    order_id: number | null;
+    order_total: number | null;
+    waiting_since: string | null;
+    items?: Array<{ product: string | null; color: string | null; size: string | null; qty: number }>;
+}
+
 export interface CartLineContext {
     producto: string;
     color: string;
@@ -137,6 +145,7 @@ export interface SalesContext {
     asesor_post_pedido?: boolean;
     pedido_confirmado_items?: PedidoConfirmadoLine[];
     payment_validation?: PaymentValidationContext;
+    card_payment_link?: CardPaymentLinkContext;
     handoff: { summary?: string; reason?: string } | null;
     current_product: {
         id: number;

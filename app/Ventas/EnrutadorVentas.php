@@ -4,6 +4,7 @@ namespace App\Ventas;
 
 use App\Models\ConversationState;
 use App\Models\Customer;
+use App\Models\Product;
 use App\Support\ResolvedorColorVariante;
 use App\Ventas\Constructores\ConstructorMensaje;
 use App\Ventas\Contratos\RespuestaBot;
@@ -39,9 +40,10 @@ class EnrutadorVentas
         ?string $etapa
     ): RespuestaBot {
         $mostrarCategorias = fn () => $this->inicio->mostrarCategorias($cliente, $estado);
+        $mostrarOtrasCategorias = fn () => $this->navegacion->otrasCategorias($cliente, $estado);
         $m = trim($mensaje);
 
-        if ($global = $this->transversal->intentarGlobal($estado, $cliente, $mensaje, $mostrarCategorias)) {
+        if ($global = $this->transversal->intentarGlobal($estado, $cliente, $mensaje, $mostrarCategorias, $mostrarOtrasCategorias)) {
             return $global;
         }
 
@@ -72,7 +74,7 @@ class EnrutadorVentas
         }
 
         if ($m === 'ver_otros_modelos') {
-            return $this->navegacion->similaresDesdeProductoActual($estado);
+            return $this->navegacion->otrosModelosMismaCategoria($estado);
         }
 
         if (preg_match('/^page_categories_(\d+)$/', $m, $match)) {
@@ -214,7 +216,7 @@ class EnrutadorVentas
     }
 
     protected function resolverTallaDesdeTexto(
-        \App\Models\Product $producto,
+        Product $producto,
         string $color,
         string $mensaje
     ): ?string {
@@ -247,6 +249,7 @@ class EnrutadorVentas
             EtapaVentas::PAGO,
             EtapaVentas::COMPROBANTE,
             EtapaVentas::TARJETA_DATOS,
+            EtapaVentas::ESPERANDO_LINK_TARJETA,
             EtapaVentas::VALIDACION_PAGO,
         ], true);
     }

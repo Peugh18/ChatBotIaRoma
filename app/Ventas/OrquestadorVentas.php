@@ -5,6 +5,7 @@ namespace App\Ventas;
 use App\Models\ConversationState;
 use App\Models\Customer;
 use App\Services\ServicioConfigNegocio;
+use App\Support\ContratoMensajeWhatsapp;
 use App\Ventas\Constructores\TraductorAccionesWhatsapp;
 use App\Ventas\Contratos\RespuestaBot;
 use App\Ventas\Manejadores\ManejadorCheckout;
@@ -70,8 +71,12 @@ class OrquestadorVentas
 
         $etapa = $this->maquina->obtener($estado);
 
+        $ubicacion = ContratoMensajeWhatsapp::ubicacionDesdePayload($metadataEntrada);
+
         if ($urlImagen) {
             $respuesta = $this->procesarImagen($estado, $urlImagen, $etapa);
+        } elseif ($ubicacion !== null) {
+            $respuesta = $this->checkout->capturarUbicacion($estado, $cliente, $ubicacion);
         } else {
             $respuesta = $this->enrutador->despachar($estado, $cliente, $mensaje, $etapa);
         }

@@ -131,6 +131,48 @@ const statusBadge = (active: boolean) =>
                 </div>
 
                 <CrmPanel
+                    v-if="stats.card_payment_link_count > 0"
+                    class="border-violet-300/60 dark:border-violet-900/40"
+                    no-padding
+                >
+                    <template #header>
+                        <div class="flex w-full items-center justify-between px-5 py-4">
+                            <div class="flex items-center gap-2">
+                                <Receipt class="h-4 w-4 text-violet-600" />
+                                <h3 class="text-sm font-semibold text-foreground">
+                                    Links tarjeta urgentes ({{ stats.card_payment_link_count }})
+                                </h3>
+                            </div>
+                            <Button variant="ghost" size="sm" as-child>
+                                <Link href="/chat" class="gap-1 text-primary">Ir al chat</Link>
+                            </Button>
+                        </div>
+                    </template>
+                    <div class="divide-y divide-border">
+                        <div
+                            v-for="item in stats.card_payment_link_queue"
+                            :key="item.phone_number"
+                            class="flex flex-wrap items-center justify-between gap-3 px-5 py-3"
+                        >
+                            <div>
+                                <p class="text-sm font-medium">
+                                    {{ item.customer_name || item.phone_number }}
+                                </p>
+                                <p class="text-xs text-muted-foreground">
+                                    Pedido #{{ item.order_id ?? '—' }}
+                                    <span v-if="item.order_total != null"> · S/ {{ item.order_total.toFixed(0) }}</span>
+                                </p>
+                            </div>
+                            <Button size="sm" variant="outline" as-child>
+                                <Link :href="`/chat?phone=${encodeURIComponent(item.phone_number)}`">
+                                    Enviar link
+                                </Link>
+                            </Button>
+                        </div>
+                    </div>
+                </CrmPanel>
+
+                <CrmPanel
                     v-if="stats.payment_validation_count > 0"
                     class="border-amber-200/60 dark:border-amber-900/40"
                     no-padding

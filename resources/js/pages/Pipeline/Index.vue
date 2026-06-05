@@ -5,6 +5,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import CrmPanel from '@/components/crm/CrmPanel.vue';
 import { apiJson, ApiError } from '@/composables/useApi';
+import { useCsrfToken } from '@/composables/useCsrfToken';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { type BreadcrumbItem } from '@/types';
 import { Head } from '@inertiajs/vue3';
 import { ref, computed, onMounted, watch } from 'vue';
@@ -63,6 +73,14 @@ const orders = ref<Order[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const updatingId = ref<number | null>(null);
+const { refreshCsrfToken } = useCsrfToken();
+
+const shipModalOpen = ref(false);
+const shipTargetOrder = ref<Order | null>(null);
+const shipMessage = ref('');
+const shipTrackingCode = ref('');
+const shipImageFile = ref<File | null>(null);
+const shipError = ref<string | null>(null);
 
 // View Mode State
 const viewMode = ref<'kanban' | 'list'>('kanban');
@@ -106,9 +124,80 @@ const updateOrderStatus = async (orderId: number, newStatus: Order['status']) =>
             body: JSON.stringify({ status: newStatus }),
         });
         await fetchOrders();
+        if (selectedOrder.value?.id === orderId) {
+            const refreshed = orders.value.find((o) => o.id === orderId);
+            if (refreshed) {
+                selectedOrder.value = refreshed;
+            }
+        }
     } catch (e) {
         const msg = e instanceof ApiError ? e.message : 'Error al actualizar el estado del pedido';
         alert(msg);
+    } finally {
+        updatingId.value = null;
+    }
+};
+
+const openShipModal = (order: Order) => {
+    shipTargetOrder.value = order;
+    shipMessage.value = `Hola hermosa 💖 Tu pedido #${order.id} ya fue enviado.`;
+    shipTrackingCode.value = '';
+    shipImageFile.value = null;
+    shipError.value = null;
+    shipModalOpen.value = true;
+};
+
+const onShipImageChange = (event: Event) => {
+    const input = event.target as HTMLInputElement;
+    shipImageFile.value = input.files?.[0] ?? null;
+};
+
+const requestAdvanceStatus = (order: Order, newStatus: Order['status']) => {
+    if (newStatus === 'shipped') {
+        openShipModal(order);
+        return;
+    }
+    void updateOrderStatus(order.id, newStatus);
+};
+
+const confirmMarcarEnviado = async () => {
+    if (!shipTargetOrder.value) {
+        return;
+    }
+    shipError.value = null;
+    updatingId.value = shipTargetOrder.value.id;
+
+    try {
+        const token = await refreshCsrfToken();
+        const form = new FormData();
+        form.append('message', shipMessage.value.trim());
+        if (shipTrackingCode.value.trim()) {
+            form.append('tracking_code', shipTrackingCode.value.trim());
+        }
+        if (shipImageFile.value) {
+            form.append('image', shipImageFile.value);
+        }
+
+        const response = await fetch(`/api/orders/${shipTargetOrder.value.id}/marcar-enviado`, {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json',
+                'X-CSRF-TOKEN': token,
+            },
+            credentials: 'same-origin',
+            body: form,
+        });
+
+        const data = (await response.json()) as { message?: string };
+        if (!response.ok) {
+            throw new ApiError(data.message ?? 'No se pudo marcar como enviado', response.status);
+        }
+
+        shipModalOpen.value = false;
+        shipTargetOrder.value = null;
+        await fetchOrders();
+    } catch (e) {
+        shipError.value = e instanceof ApiError ? e.message : 'Error al enviar notificación';
     } finally {
         updatingId.value = null;
     }
@@ -368,7 +457,7 @@ onMounted(() => {
                                             v-if="prevStatus(col.key)"
                                             type="button"
                                             :disabled="updatingId === order.id"
-                                            @click="updateOrderStatus(order.id, prevStatus(col.key)!)"
+                                            @click="requestAdvanceStatus(order, prevStatus(col.key)!)"
                                             class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
                                             title="Retroceder estado"
                                         >
@@ -378,7 +467,7 @@ onMounted(() => {
                                             v-if="nextStatus(col.key)"
                                             type="button"
                                             :disabled="updatingId === order.id"
-                                            @click="updateOrderStatus(order.id, nextStatus(col.key)!)"
+                                            @click="requestAdvanceStatus(order, nextStatus(col.key)!)"
                                             class="p-1 rounded bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400"
                                             title="Avanzar estado"
                                         >
@@ -534,7 +623,7 @@ onMounted(() => {
                                                         size="sm"
                                                         class="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted"
                                                         :disabled="updatingId === order.id"
-                                                        @click="updateOrderStatus(order.id, prevStatus(order.status)!)"
+                                                        @click="requestAdvanceStatus(order, prevStatus(order.status)!)"
                                                         title="Retroceder estado"
                                                     >
                                                         <ArrowLeft class="h-4 w-4" />
@@ -545,7 +634,7 @@ onMounted(() => {
                                                         size="sm"
                                                         class="h-8 w-8 p-0 text-primary hover:text-primary hover:bg-primary/10"
                                                         :disabled="updatingId === order.id"
-                                                        @click="updateOrderStatus(order.id, nextStatus(order.status)!)"
+                                                        @click="requestAdvanceStatus(order, nextStatus(order.status)!)"
                                                         title="Avanzar estado"
                                                     >
                                                         <ArrowRight class="h-4 w-4" />
@@ -781,5 +870,70 @@ onMounted(() => {
                 </div>
             </div>
         </div>
+
+        <Dialog v-model:open="shipModalOpen">
+            <DialogContent class="sm:max-w-lg">
+                <DialogHeader>
+                    <DialogTitle>Marcar pedido como enviado</DialogTitle>
+                    <DialogDescription>
+                        Se enviará por WhatsApp al cliente
+                        <span v-if="shipTargetOrder"> (pedido #{{ shipTargetOrder.id }})</span>.
+                        El código de recojo irá en <strong>negrita</strong>.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div class="space-y-4 py-2">
+                    <div class="space-y-2">
+                        <Label for="ship-message">Mensaje para el cliente</Label>
+                        <textarea
+                            id="ship-message"
+                            v-model="shipMessage"
+                            rows="4"
+                            class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            placeholder="Tu pedido ya va en camino..."
+                        />
+                    </div>
+                    <div class="space-y-2">
+                        <Label for="ship-code">Código de recojo (opcional)</Label>
+                        <Input
+                            id="ship-code"
+                            v-model="shipTrackingCode"
+                            placeholder="Ej. 482910"
+                        />
+                    </div>
+                    <div
+                        v-if="shipTargetOrder?.shipping_method === 'shalom'"
+                        class="space-y-2"
+                    >
+                        <Label for="ship-image">Boleta / voucher de agencia (opcional)</Label>
+                        <input
+                            id="ship-image"
+                            type="file"
+                            accept="image/*"
+                            class="block w-full text-sm text-muted-foreground"
+                            @change="onShipImageChange"
+                        />
+                    </div>
+                    <p
+                        v-else-if="shipTargetOrder?.shipping_method === 'motorizado'"
+                        class="text-xs text-muted-foreground"
+                    >
+                        Envío motorizado: no hace falta adjuntar boleta de agencia.
+                    </p>
+                    <p v-if="shipError" class="text-sm text-destructive">{{ shipError }}</p>
+                </div>
+
+                <DialogFooter>
+                    <Button variant="outline" type="button" @click="shipModalOpen = false">Cancelar</Button>
+                    <Button
+                        type="button"
+                        :disabled="!shipMessage.trim() || updatingId !== null"
+                        @click="confirmMarcarEnviado"
+                    >
+                        {{ updatingId ? 'Enviando...' : 'Enviar y marcar enviado' }}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     </AppLayout>
 </template>

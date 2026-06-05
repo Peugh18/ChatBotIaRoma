@@ -21,7 +21,7 @@ class ContratoMensajeWhatsapp
     ];
 
     /**
-     * @param array<string, mixed>|null $metadata
+     * @param  array<string, mixed>|null  $metadata
      * @return array<string, mixed>
      */
     public static function buildOutbound(
@@ -75,7 +75,7 @@ class ContratoMensajeWhatsapp
             } else {
                 $normalizer = app(WhatsappInteractiveNormalizer::class);
                 $metaInteractive = $normalizer->toMetaPayload($interactive);
-                if ($metaInteractive !== null && !empty($metaInteractive['action'])) {
+                if ($metaInteractive !== null && ! empty($metaInteractive['action'])) {
                     if ($canAttachImageHeader && empty($metaInteractive['header'])) {
                         $metaInteractive['header'] = [
                             'type' => 'image',
@@ -96,19 +96,61 @@ class ContratoMensajeWhatsapp
     }
 
     /**
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
+    /**
+     * roma-api a veces manda message_type=text pero raw.type=location.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public static function esMensajeUbicacion(array $payload): bool
+    {
+        if (($payload['message_type'] ?? '') === 'location') {
+            return true;
+        }
+
+        if (! empty($payload['location']) && is_array($payload['location'])) {
+            return true;
+        }
+
+        $raw = $payload['raw'] ?? null;
+
+        return is_array($raw)
+            && ($raw['type'] ?? '') === 'location'
+            && is_array($raw['location'] ?? null);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>|null
+     */
+    public static function ubicacionCrudaDePayload(array $payload): ?array
+    {
+        $loc = $payload['location'] ?? null;
+        if (! is_array($loc)) {
+            $raw = $payload['raw'] ?? $payload['whatsapp_raw'] ?? null;
+            if (is_array($raw) && is_array($raw['location'] ?? null)) {
+                $loc = $raw['location'];
+            }
+        }
+
+        return is_array($loc) ? $loc : null;
+    }
+
     public static function inboundMetadata(array $payload): array
     {
+        $messageType = $payload['message_type'] ?? 'text';
+        if (self::esMensajeUbicacion($payload)) {
+            $messageType = 'location';
+        }
+
         $meta = [
             'roma_contract_version' => self::VERSION,
-            'whatsapp_message_type' => $payload['message_type'] ?? 'text',
+            'whatsapp_message_type' => $messageType,
         ];
 
-        $messageType = $payload['message_type'] ?? 'text';
-
-        if (!empty($payload['interactive']) && is_array($payload['interactive'])) {
+        if (! empty($payload['interactive']) && is_array($payload['interactive'])) {
             $meta['interactive'] = $payload['interactive'];
         }
 
@@ -116,19 +158,57 @@ class ContratoMensajeWhatsapp
             $meta['type'] = 'interactive_reply';
         } elseif ($messageType === 'image') {
             $meta['type'] = 'image';
-            if (!empty($payload['image_url'])) {
+            if (! empty($payload['image_url'])) {
                 $meta['image_url'] = $payload['image_url'];
             }
-            if (! empty($payload['raw']) && is_array($payload['raw'])) {
-                $meta['whatsapp_raw'] = $payload['raw'];
-            }
+        } elseif ($messageType === 'location') {
+            $meta['type'] = 'location';
+        }
+
+        if (! empty($payload['raw']) && is_array($payload['raw'])) {
+            $meta['whatsapp_raw'] = $payload['raw'];
+        }
+
+        $loc = self::ubicacionCrudaDePayload($payload);
+        if ($loc !== null) {
+            $meta['location'] = $loc;
         }
 
         return $meta;
     }
 
     /**
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>|null  $payload
+     * @return array{lat: float, lng: float, name?: string}|null
+     */
+    public static function ubicacionDesdePayload(?array $payload): ?array
+    {
+        if ($payload === null) {
+            return null;
+        }
+
+        $loc = self::ubicacionCrudaDePayload($payload);
+        if ($loc === null) {
+            return null;
+        }
+
+        $lat = $loc['latitude'] ?? $loc['lat'] ?? null;
+        $lng = $loc['longitude'] ?? $loc['lng'] ?? null;
+        if ($lat === null || $lng === null) {
+            return null;
+        }
+
+        $resultado = ['lat' => (float) $lat, 'lng' => (float) $lng];
+        $nombre = $loc['name'] ?? $loc['address'] ?? null;
+        if (is_string($nombre) && $nombre !== '') {
+            $resultado['name'] = $nombre;
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
      */
     public static function inboundContent(array $payload): string
     {
@@ -137,8 +217,11 @@ class ContratoMensajeWhatsapp
             $raw = $raw['body'];
         }
         $content = is_string($raw) ? trim($raw) : '';
+        if (self::esMensajeUbicacion($payload)) {
+            return '📍 Ubicación compartida';
+        }
         if ($content === '' || $content === '[non-text]') {
-            if (!empty($payload['interactive']['title'])) {
+            if (! empty($payload['interactive']['title'])) {
                 return (string) $payload['interactive']['title'];
             }
             if ($content === '[non-text]') {
@@ -151,17 +234,17 @@ class ContratoMensajeWhatsapp
 
     protected static function isPublicHttpsUrl(string $url): bool
     {
-        if (!str_starts_with($url, 'https://')) {
+        if (! str_starts_with($url, 'https://')) {
             return false;
         }
 
         $host = parse_url($url, PHP_URL_HOST);
-        if (!$host) {
+        if (! $host) {
             return false;
         }
 
         $blocked = ['localhost', '127.0.0.1', '0.0.0.0', '[::1]'];
 
-        return !in_array(strtolower($host), $blocked, true);
+        return ! in_array(strtolower($host), $blocked, true);
     }
 }

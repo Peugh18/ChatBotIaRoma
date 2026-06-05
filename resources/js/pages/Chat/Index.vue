@@ -61,6 +61,11 @@ const {
     validatePayment,
     validatingPayment,
     paymentValidationError,
+    sendCardPaymentLink,
+    sendingCardLink,
+    cardLinkError,
+    cardPaymentLinkInput,
+    cardLinkQueue,
     asesorPostPedido,
 } = useChatPage();
 
@@ -71,6 +76,14 @@ const enSeguimientoPedido = computed(
 const awaitingPaymentValidation = computed(
     () => salesContext.value?.payment_validation?.pending === true,
 );
+
+const awaitingCardPaymentLink = computed(() => {
+    const link = salesContext.value?.card_payment_link;
+    if (link?.pending === true) {
+        return true;
+    }
+    return salesContext.value?.etapa_venta === 'esperando_link_tarjeta';
+});
 
 const selectedConversation = computed(() =>
     conversations.value.find((c) => c.phone === selectedPhone.value),
@@ -97,6 +110,25 @@ const showSelectedPhoneSubtitle = computed(() => {
                 title="Chat WhatsApp"
                 description="Conversaciones en tiempo real, contexto de venta y control de handoff humano."
             /-->
+
+            <div
+                v-if="cardLinkQueue.length"
+                class="mt-4 rounded-lg border border-violet-400 bg-violet-50 px-4 py-3 text-sm text-violet-950 dark:border-violet-700 dark:bg-violet-950/40 dark:text-violet-100"
+            >
+                <div class="font-semibold">Urgente: links de tarjeta por enviar ({{ cardLinkQueue.length }})</div>
+                <ul class="mt-2 space-y-1">
+                    <li v-for="item in cardLinkQueue.slice(0, 5)" :key="item.phone_number">
+                        <a
+                            :href="`/chat?phone=${encodeURIComponent(item.phone_number)}`"
+                            class="font-medium underline underline-offset-2"
+                        >
+                            {{ item.customer_name || item.phone_number }}
+                        </a>
+                        — Pedido #{{ item.order_id ?? '—' }}
+                        <span v-if="item.order_total != null"> · S/ {{ item.order_total.toFixed(0) }}</span>
+                    </li>
+                </ul>
+            </div>
 
             <div
                 v-if="escalationAlerts.length"
@@ -385,6 +417,40 @@ const showSelectedPhoneSubtitle = computed(() => {
                             </div>
 
                             <div
+                                v-if="awaitingCardPaymentLink"
+                                class="shrink-0 border-b border-violet-300 bg-violet-50 px-4 py-3 dark:border-violet-800 dark:bg-violet-950/50"
+                            >
+                                <p class="text-xs font-semibold text-violet-950 dark:text-violet-100">
+                                    Urgente: enviar link de pago (tarjeta)
+                                </p>
+                                <p class="mt-0.5 text-[11px] text-violet-800 dark:text-violet-200">
+                                    Pedido #{{ salesContext?.card_payment_link?.order_id ?? '—' }}
+                                    <span v-if="salesContext?.card_payment_link?.order_total != null">
+                                        · S/ {{ salesContext.card_payment_link.order_total.toFixed(2) }}
+                                    </span>
+                                </p>
+                                <div class="mt-2 flex flex-col gap-2 sm:flex-row">
+                                    <input
+                                        v-model="cardPaymentLinkInput"
+                                        type="url"
+                                        placeholder="Pega el link de pago (https://...)"
+                                        class="min-w-0 flex-1 rounded-md border border-violet-200 bg-white px-3 py-2 text-sm dark:border-violet-700 dark:bg-background"
+                                    />
+                                    <button
+                                        type="button"
+                                        class="shrink-0 rounded-full bg-violet-600 px-5 py-2 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-60"
+                                        :disabled="sendingCardLink"
+                                        @click="sendCardPaymentLink"
+                                    >
+                                        {{ sendingCardLink ? 'Enviando…' : 'Enviar link' }}
+                                    </button>
+                                </div>
+                                <p v-if="cardLinkError" class="mt-2 text-[11px] font-medium text-red-700 dark:text-red-300">
+                                    {{ cardLinkError }}
+                                </p>
+                            </div>
+
+                            <div
                                 v-if="currentConversationMode === 'human'"
                                 class="flex shrink-0 items-center gap-2 border-b px-4 py-2 text-xs transition-colors duration-300"
                                 :class="
@@ -492,6 +558,47 @@ const showSelectedPhoneSubtitle = computed(() => {
 
                             <div class="crm-chat-input-bar shrink-0 border-t p-4">
                                 <div
+                                    v-if="awaitingCardPaymentLink"
+                                    class="mb-3 rounded-lg border border-violet-300 bg-violet-50 p-3 dark:border-violet-800 dark:bg-violet-950/40"
+                                >
+                                    <div class="space-y-3">
+                                        <div class="text-xs text-violet-950 dark:text-violet-100">
+                                            <p class="font-semibold">Enviar link de pago (tarjeta)</p>
+                                            <p class="mt-0.5 text-violet-800/90 dark:text-violet-200/90">
+                                                Pedido #{{ salesContext?.card_payment_link?.order_id ?? '—' }}
+                                                <span v-if="salesContext?.card_payment_link?.order_total != null">
+                                                    · S/ {{ salesContext.card_payment_link.order_total.toFixed(2) }}
+                                                </span>
+                                            </p>
+                                            <p class="mt-1 text-[11px]">
+                                                El bot sigue activo; al enviar el link pedirá la captura al cliente.
+                                            </p>
+                                        </div>
+                                        <input
+                                            v-model="cardPaymentLinkInput"
+                                            type="url"
+                                            placeholder="https://..."
+                                            class="flex w-full rounded-md border border-violet-200 bg-white px-3 py-2 text-sm dark:border-violet-700 dark:bg-background"
+                                        />
+                                        <button
+                                            type="button"
+                                            class="w-full rounded-full bg-violet-600 px-5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                            :disabled="sendingCardLink"
+                                            @click="sendCardPaymentLink"
+                                        >
+                                            {{ sendingCardLink ? 'Enviando…' : 'Enviar link al cliente' }}
+                                        </button>
+                                        <p
+                                            v-if="cardLinkError"
+                                            class="text-[11px] font-medium text-red-700 dark:text-red-300"
+                                            role="alert"
+                                        >
+                                            {{ cardLinkError }}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div
                                     v-if="awaitingPaymentValidation"
                                     class="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-800 dark:bg-emerald-950/40"
                                 >
@@ -532,7 +639,7 @@ const showSelectedPhoneSubtitle = computed(() => {
                                     </p>
                                 </div>
                                 <div
-                                    v-if="currentConversationMode === 'bot'"
+                                    v-if="currentConversationMode === 'bot' && !awaitingCardPaymentLink && !awaitingPaymentValidation"
                                     class="mb-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 dark:border-amber-700 dark:bg-amber-900/20"
                                 >
                                     <Bot class="h-4 w-4 text-amber-600 dark:text-amber-400" />
@@ -714,6 +821,22 @@ const showSelectedPhoneSubtitle = computed(() => {
                                 </div>
 
                                 <div v-if="loadingSalesContext" class="py-2 italic text-gray-400">Cargando catálogo...</div>
+
+                                <div
+                                    v-if="awaitingCardPaymentLink"
+                                    class="mb-2 rounded border border-violet-300 bg-violet-50 p-3 text-[10px] text-violet-900 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-100"
+                                >
+                                    <p class="font-semibold">Link tarjeta pendiente</p>
+                                    <p class="mt-1">
+                                        Pedido #{{ salesContext?.card_payment_link?.order_id ?? '—' }}
+                                        <span v-if="salesContext?.card_payment_link?.order_total != null">
+                                            · S/ {{ salesContext.card_payment_link.order_total.toFixed(2) }}
+                                        </span>
+                                    </p>
+                                    <p class="mt-1 text-violet-700 dark:text-violet-300">
+                                        Usa la barra violeta arriba del chat para enviar el link.
+                                    </p>
+                                </div>
 
                                 <div
                                     v-else-if="salesContext?.handoff?.summary"

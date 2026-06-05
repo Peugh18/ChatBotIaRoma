@@ -22,6 +22,7 @@ class Order extends Model
         'amount_subtotal',
         'amount_total',
         'paid_at',
+        'stock_deducted_at',
         'shipped_at',
         'delivered_at',
         'notes',
@@ -33,6 +34,7 @@ class Order extends Model
         'amount_subtotal' => 'decimal:2',
         'amount_total' => 'decimal:2',
         'paid_at' => 'datetime',
+        'stock_deducted_at' => 'datetime',
         'shipped_at' => 'datetime',
         'delivered_at' => 'datetime',
     ];

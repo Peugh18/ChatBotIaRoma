@@ -6,6 +6,7 @@ use App\Jobs\SendWhatsappMessageJob;
 use App\Models\BotSetting;
 use App\Models\ConversationState;
 use App\Models\Message;
+use App\Ventas\MaquinaEstados\EtapaVentas;
 use App\Ventas\MaquinaEstados\MaquinaEstadosVentas;
 use App\Ventas\Servicios\ServicioCarrito;
 
@@ -53,7 +54,12 @@ class ServicioRecordatorios
             $ultimo = $estado->last_reminder_sent ?? 'none';
 
             if ($ultimo === 'none' && $estado->last_activity_at->lt(now()->subSeconds($segundos3))) {
-                $texto = trim((string) $settings->reminder_3min_message);
+                $texto = $etapa === EtapaVentas::ESPERANDO_LINK_TARJETA
+                    ? trim((string) config(
+                        'copy_ventas.tarjeta_recordatorio_link_cliente',
+                        'Tu link de pago llega en un momentito hermosa 💳✨'
+                    ))
+                    : trim((string) $settings->reminder_3min_message);
                 if ($texto !== '' && $this->enviar($estado, $texto)) {
                     $estado->update(['last_reminder_sent' => '3min']);
                     $enviados[] = ['phone' => $estado->phone_number, 'type' => '3min'];
@@ -63,14 +69,14 @@ class ServicioRecordatorios
             }
 
             if ($ultimo === '3min' && $estado->last_activity_at->lt(now()->subSeconds($segundos15))) {
-                if ($etapa === \App\Ventas\MaquinaEstados\EtapaVentas::MAS_O_CONFIRMAR) {
+                if ($etapa === EtapaVentas::MAS_O_CONFIRMAR) {
                     $revalidado = $this->carrito->revalidar($this->maquina->carrito($estado));
                     if ($revalidado['cambio']) {
                         $this->maquina->guardarCarrito($estado, $revalidado['lineas']);
                     }
                 }
 
-                $texto = trim((string) $settings->reminder_15min_message);
+                $texto = $this->mensajeRecordatorio15Min($etapa, $settings);
                 if ($texto !== '' && $this->enviar($estado, $texto)) {
                     $estado->update(['last_reminder_sent' => '15min']);
                     $enviados[] = ['phone' => $estado->phone_number, 'type' => '15min'];
@@ -79,6 +85,29 @@ class ServicioRecordatorios
         }
 
         return $enviados;
+    }
+
+    protected function mensajeRecordatorio15Min(?string $etapa, BotSetting $settings): string
+    {
+        if ($etapa === EtapaVentas::ESPERANDO_LINK_TARJETA) {
+            return trim((string) config(
+                'copy_ventas.tarjeta_recordatorio_link_cliente',
+                'Tu link de pago llega en un momentito hermosa 💳✨'
+            ));
+        }
+
+        if (in_array($etapa, [
+            EtapaVentas::ENVIO_METODO,
+            EtapaVentas::ENVIO_DATOS,
+            EtapaVentas::DATOS_REUTILIZAR,
+        ], true)) {
+            return trim((string) config(
+                'copy_ventas.recordatorio_datos_envio',
+                'Hermosa por favor sus datos para poder programar el envío 💖'
+            ));
+        }
+
+        return trim((string) $settings->reminder_15min_message);
     }
 
     protected function enviar(ConversationState $estado, string $texto): bool

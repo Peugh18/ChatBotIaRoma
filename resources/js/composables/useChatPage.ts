@@ -8,6 +8,7 @@ import { useChatOutbound } from '@/composables/useChatOutbound';
 import { useBotMetricsPanel } from '@/composables/useBotMetricsPanel';
 import { useChatRealtime } from '@/composables/useChatRealtime';
 import { useCsrfToken } from '@/composables/useCsrfToken';
+import { apiJson } from '@/composables/useApi';
 
 export function useChatPage() {
     const selectedPhone = ref<string | null>(null);
@@ -64,6 +65,10 @@ export function useChatPage() {
         validatePayment,
         validatingPayment,
         paymentValidationError,
+        sendCardPaymentLink,
+        sendingCardLink,
+        cardLinkError,
+        cardPaymentLinkInput,
     } = useSalesContext(
         selectedPhone,
         currentConversationMode,
@@ -102,6 +107,23 @@ export function useChatPage() {
     });
 
     const { botMetrics, escalationAlerts, fetchBotMetrics, pushEscalationAlert } = useBotMetricsPanel();
+    const cardLinkQueue = ref<Array<{
+        phone_number: string;
+        customer_name: string | null;
+        order_id: number | null;
+        order_total: number | null;
+    }>>([]);
+
+    const fetchCardLinkQueue = async () => {
+        try {
+            const data = await apiJson<{
+                card_payment_link_queue?: typeof cardLinkQueue.value;
+            }>('/api/dashboard-stats');
+            cardLinkQueue.value = data.card_payment_link_queue ?? [];
+        } catch {
+            cardLinkQueue.value = [];
+        }
+    };
     const { refreshCsrfToken } = useCsrfToken();
 
     const handleIncomingMessage = (incoming: ChatMessage) => {
@@ -124,6 +146,7 @@ export function useChatPage() {
     const pollChat = () => {
         fetchMessages();
         fetchBotMetrics();
+        fetchCardLinkQueue();
         if (selectedCustomerId.value && !savingCustomer.value) {
             loadCustomerIfNeeded();
         }
@@ -250,5 +273,10 @@ export function useChatPage() {
         validatePayment,
         validatingPayment,
         paymentValidationError,
+        sendCardPaymentLink,
+        sendingCardLink,
+        cardLinkError,
+        cardPaymentLinkInput,
+        cardLinkQueue,
     };
 }

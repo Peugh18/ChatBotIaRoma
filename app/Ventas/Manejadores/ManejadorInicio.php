@@ -5,8 +5,8 @@ namespace App\Ventas\Manejadores;
 use App\Models\ConversationState;
 use App\Models\Customer;
 use App\Ventas\Constructores\ConstructorInteractivos;
-use App\Ventas\Constructores\PaginadorListasWhatsapp;
 use App\Ventas\Constructores\ConstructorMensaje;
+use App\Ventas\Constructores\PaginadorListasWhatsapp;
 use App\Ventas\Contratos\RespuestaBot;
 use App\Ventas\MaquinaEstados\EtapaVentas;
 use App\Ventas\MaquinaEstados\MaquinaEstadosVentas;
@@ -22,8 +22,12 @@ class ManejadorInicio
         protected PaginadorListasWhatsapp $paginador,
     ) {}
 
-    public function mostrarCategorias(?Customer $cliente, ConversationState $estado, int $pagina = 0): RespuestaBot
-    {
+    public function mostrarCategorias(
+        ?Customer $cliente,
+        ConversationState $estado,
+        int $pagina = 0,
+        string $contextoLista = 'inicio'
+    ): RespuestaBot {
         $categorias = $this->catalogo->categoriasConProductosVisibles();
         if ($categorias->isEmpty()) {
             return RespuestaBot::texto($this->mensajes->plantilla('sin_datos_bd'));
@@ -39,7 +43,7 @@ class ManejadorInicio
 
         $pag = $this->paginador->pagina($todas, $pagina, 'page_categories');
         $cuerpo = $pagina === 0
-            ? $this->mensajes->saludo($cliente)
+            ? $this->cuerpoListaCategorias($cliente, $contextoLista)
             : $this->mensajes->plantilla('lista_pagina_siguiente', ['pagina' => (string) ($pagina + 1)]);
 
         $payload = $this->interactivos->construir(
@@ -70,5 +74,14 @@ class ManejadorInicio
         }
 
         return false;
+    }
+
+    protected function cuerpoListaCategorias(?Customer $cliente, string $contextoLista): string
+    {
+        return match ($contextoLista) {
+            'otras' => $this->mensajes->plantilla('otras_categorias_intro'),
+            'agregar_otro' => $this->mensajes->plantilla('agregar_otro_categorias_intro'),
+            default => $this->mensajes->saludo($cliente),
+        };
     }
 }
